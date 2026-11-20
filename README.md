@@ -1,4 +1,5 @@
 # llamaUI — a native Windows GUI for llama.cpp's `llama-server`
+<img width="1182" height="920" alt="2026-11-21_055014" src="https://github.com/user-attachments/assets/980c3291-ea42-484c-8faa-c203ab0e5389" />
 
 [简体中文](README.zh-CN.md) · English
 
