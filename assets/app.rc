@@ -1,0 +1,37 @@
+﻿#pragma code_page(65001)
+/* 程序资源：图标 + 版本信息
+ * App resources: icon and version info.
+ * windres 由 build.rs 调用，产物链接进 llamaui.exe。
+ */
+
+1 ICON "icon.ico"
+
+/* 应用清单：comctl32 v6 + DPI 感知，让提示框与控件使用现代样式
+ * App manifest: comctl32 v6 + DPI awareness. */
+1 24 "app.manifest"
+
+1 VERSIONINFO
+FILEVERSION 1,0,0,0
+PRODUCTVERSION 1,0,0,0
+FILEOS 0x40004
+FILETYPE 0x1
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "080404B0"
+    BEGIN
+      VALUE "CompanyName", "黑山大叔"
+      VALUE "FileDescription", "llama.cpp 模型管理器"
+      VALUE "FileVersion", "1.0.0.0"
+      VALUE "InternalName", "llamaui"
+      VALUE "LegalCopyright", "GPL-3.0-or-later | 作者 黑山大叔 https://space.bilibili.com/19428259"
+      VALUE "OriginalFilename", "llamaui.exe"
+      VALUE "ProductName", "llamaUI"
+      VALUE "ProductVersion", "1.0.0.0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x804, 1200
+  END
+END

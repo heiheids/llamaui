@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>llamaUI advanced</title>
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/panel.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="/icon.png" alt="llamaUI" width="34" height="34" />
+      <div class="brand-text">
+        <h1 id="adv-title"></h1>
+        <p id="adv-sub"></p>
+      </div>
+    </div>
+    <span class="spacer"></span>
+    <button id="adv-back" class="ghost"></button>
+    <button id="adv-save" class="primary"></button>
+  </header>
+
+  <main class="adv-page">
+    <section class="panel">
+      <h2 data-i18n="section.advanced"></h2>
+      <div class="field-grid" id="fields-advanced"></div>
+    </section>
+
+    <section class="panel">
+      <h2 data-i18n="section.app"></h2>
+      <div class="field-grid" id="fields-app"></div>
+      <p class="hint" id="adv-exe-hint"></p>
+      <div class="path-row">
+        <input id="adv-scan-dirs" type="text" spellcheck="false" />
+        <button id="adv-scan-save"></button>
+      </div>
+    </section>
+
+    <p class="save-hint" id="adv-hint"></p>
+  </main>
+
+  <script type="module" src="/js/advanced.js"></script>
+</body>
+</html>

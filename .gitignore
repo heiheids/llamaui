@@ -1,0 +1,34 @@
+# ---- 构建产物 ----
+/target/
+/dist/
+*.exe
+*.pdb
+*.ilk
+
+# ---- 运行时数据（含个人路径与 API 密钥，绝不入库）----
+/data/
+/logs/
+
+# ---- 随附的 llama.cpp 二进制与模型（体积大且各自有独立许可）----
+/llama-b12549/
+/llama-*/
+/models/
+/gguf/
+
+# ---- 本地工具链 ----
+/.toolchain/
+
+# ---- 运行时生成的翻译缓存 ----
+/locales/params.zh-CN.json
+
+# ---- 备份与临时目录 ----
+/llamaUI工程备份/
+/.restore/
+*.zip
+
+# ---- 编辑器/系统 ----
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini

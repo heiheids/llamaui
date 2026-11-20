@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>llamaUI</title>
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/panel.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="/icon.png" alt="llamaUI" width="40" height="40" />
+      <div class="brand-text">
+        <h1 id="app-title">llamaUI</h1>
+        <p id="app-sub"></p>
+      </div>
+    </div>
+
+    <div class="status-strip" id="status-strip">
+      <span class="pill" id="status-pill" data-phase="stopped">—</span>
+      <span class="kv"><b id="lbl-model"></b><span id="status-model">—</span></span>
+      <span class="kv"><b id="lbl-host"></b><span id="status-host">—</span></span>
+      <span class="kv"><b id="lbl-uptime"></b><span id="status-uptime">—</span></span>
+    </div>
+
+    <div class="topbar-actions">
+      <select id="lang-select" title="language"></select>
+      <button id="btn-log" class="ghost"></button>
+      <button id="btn-advanced" class="ghost"></button>
+      <button id="btn-chat" class="ghost"></button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel col-models">
+      <div class="panel-head">
+        <h2 data-i18n="section.models"></h2>
+        <span class="count" id="model-count">0</span>
+      </div>
+
+      <div class="btn-row">
+        <button id="btn-import"></button>
+        <button id="btn-scan"></button>
+      </div>
+
+      <div class="path-row">
+        <input id="import-path" type="text" spellcheck="false" />
+        <button id="btn-import-path" data-i18n="button.addPath"></button>
+      </div>
+
+      <ul id="model-list" class="model-list"></ul>
+
+      <div class="start-box">
+        <button id="btn-start" class="primary big"></button>
+        <button id="btn-stop" class="danger"></button>
+      </div>
+
+      <details class="args-box">
+        <summary data-i18n="label.argsPreview"></summary>
+        <pre id="args-preview" class="mono"></pre>
+      </details>
+    </aside>
+
+    <section class="panel col-settings">
+      <div class="panel-head">
+        <h2 data-i18n="section.common"></h2>
+        <span class="spacer"></span>
+        <button id="btn-save" class="primary"></button>
+      </div>
+
+      <div class="field-grid" id="fields-common"></div>
+
+      <h3 data-i18n="section.network"></h3>
+      <div class="field-grid" id="fields-network"></div>
+
+      <div class="endpoint-box">
+        <h3 data-i18n="label.apiPreview"></h3>
+        <pre id="api-endpoints" class="mono"></pre>
+        <p class="hint" id="api-key-hint"></p>
+      </div>
+
+      <p class="save-hint" id="save-hint"></p>
+    </section>
+  </main>
+
+  <footer class="footer" id="app-footer"></footer>
+
+  <dialog id="log-dialog" class="log-dialog">
+    <div class="panel-head">
+      <h2 data-i18n="status.log"></h2>
+      <span class="spacer"></span>
+      <button id="btn-log-clear" class="ghost"></button>
+      <button id="btn-log-close" class="ghost"></button>
+    </div>
+    <pre id="log-view" class="mono log-view"></pre>
+  </dialog>
+
+  <script type="module" src="/js/panel.js"></script>
+</body>
+</html>

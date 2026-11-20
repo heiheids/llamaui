@@ -1,0 +1,19 @@
+[package]
+name = "llamaui"
+version = "0.1.0"
+edition = "2021"
+description = "llama.cpp 模型加载管理器 / llama.cpp model launcher & manager"
+authors = ["黑山大叔 <https://space.bilibili.com/19428259>", "https://github.com/heiheids"]
+license = "GPL-3.0-or-later"
+build = "build.rs"
+
+# 零第三方依赖：仅使用 std，保证 Windows / Linux / macOS 一致构建
+# Zero third-party dependencies: std only, for consistent cross-OS builds
+[dependencies]
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

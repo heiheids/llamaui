@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>llamaUI chat</title>
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/chat.css" />
+</head>
+<body class="chat-body">
+  <header class="topbar chat-topbar">
+    <div class="brand">
+      <img src="/icon.png" alt="llamaUI" width="34" height="34" />
+      <div class="brand-text">
+        <h1 id="chat-title"></h1>
+        <p id="chat-model"></p>
+      </div>
+    </div>
+    <span class="spacer"></span>
+    <span class="pill" id="chat-phase" data-phase="stopped">—</span>
+    <a class="ghost link-btn" href="/" id="chat-back"></a>
+  </header>
+
+  <main class="chat-main">
+    <section class="chat-log" id="chat-log"></section>
+
+    <div class="attach-strip hidden" id="attach-strip"></div>
+
+    <form class="composer" id="composer">
+      <textarea id="chat-input" rows="3" spellcheck="false"></textarea>
+      <div class="composer-side">
+        <button type="button" class="ghost" id="btn-image"></button>
+        <input type="file" id="file-input" accept="image/*" multiple hidden />
+        <button type="submit" class="primary" id="btn-send"></button>
+        <button type="button" class="ghost" id="btn-clear"></button>
+      </div>
+    </form>
+    <p class="hint" id="chat-status"></p>
+  </main>
+
+  <script type="module" src="/js/chat.js"></script>
+</body>
+</html>
