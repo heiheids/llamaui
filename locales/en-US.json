@@ -242,7 +242,8 @@
     "io": "File I/O failed",
     "noApiKey": "No API key to copy",
     "unknownArch": "Architecture {arch} is not supported by the bundled llama-server (b12549). Update llama.cpp or use a compatible model file.",
-    "noLlamaServer": "llama-server not found; pick it in Advanced settings → llama-server path"
+    "noLlamaServer": "llama-server not found; pick it in Advanced settings → llama-server path",
+    "tensorMismatch": "This model is incompatible with the current llama.cpp build: tensor {tensor} is missing. Usually the model is newer than llama.cpp (or uses new features such as looped layers). Update llama.cpp, or use a quant this build can load."
   },
   "chat": {
     "title": "Test chat",

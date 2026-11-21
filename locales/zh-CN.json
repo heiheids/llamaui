@@ -243,7 +243,8 @@
     "io": "文件读写失败",
     "noApiKey": "当前没有可复制的密钥",
     "unknownArch": "该模型的架构 {arch} 不被当前 llama-server 支持（b12549），请更新 llama.cpp 或换用兼容的模型文件。",
-    "noLlamaServer": "未发现 llama-server，请进「高级设置 → llama-server 路径」选择"
+    "noLlamaServer": "未发现 llama-server，请进「高级设置 → llama-server 路径」选择",
+    "tensorMismatch": "该模型与当前 llama.cpp 版本不兼容：缺少张量 {tensor}。通常是模型比 llama.cpp 新（或用了循环层等新特性），请更新 llama.cpp，或换用该版本能加载的量化文件。"
   },
   "chat": {
     "title": "测试聊天",

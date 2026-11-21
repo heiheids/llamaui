@@ -1339,10 +1339,17 @@ fn append_logs(g: &mut Gui) {
 
     // 把常见的加载失败翻译成一句人话，直接写在日志里并提示到界面
     let mut bad_arch: Option<String> = None;
+    // 另一类失败：架构名认识，但张量对不上（模型比 llama.cpp 新，或用了循环层等新特性）
+    let mut bad_tensor: Option<String> = None;
     for line in lines.iter() {
         if let Some(arch) = unknown_arch_of(line) {
             bad_arch = Some(arch);
             break;
+        }
+        if bad_tensor.is_none() {
+            if let Some(t) = tensor_mismatch_of(line) {
+                bad_tensor = Some(t);
+            }
         }
     }
     if let Some(arch) = bad_arch {
@@ -1361,7 +1368,52 @@ fn append_logs(g: &mut Gui) {
         if changed {
             refresh_models(g);
         }
+    } else if let Some(tensor) = bad_tensor {
+        // 架构认识但张量缺失：同样是"当前 llama.cpp 加载不了这个模型"
+        let msg = i18n(g, "err.tensorMismatch").replace("{tensor}", &tensor);
+        let id = g.selected_id.clone();
+        let mut changed = false;
+        if let Ok(mut app) = g.shared.lock() {
+            changed = app.lib.set_unsupported(&id, true);
+            if changed {
+                let _ = app.lib.save();
+            }
+            app.launcher.push_log(&msg, "");
+        }
+        set_text(g.lbl_hint, &msg);
+        if changed {
+            refresh_models(g);
+        }
     }
+}
+
+/// 识别「架构名能认出、但张量布局对不上」的加载失败。
+/// 典型日志：`error loading model: check_tensor_dims: tensor 'blk.24.attn_q.weight' not found`
+/// 返回缺失的张量名，便于在提示里写清楚。
+fn tensor_mismatch_of(line: &str) -> Option<String> {
+    let key = "check_tensor_dims:";
+    if !line.contains(key) {
+        return None;
+    }
+    let rest = &line[line.find(key)? + key.len()..];
+    // 取 tensor '...' 里的名字
+    if let Some(start) = rest.find("tensor '") {
+        let tail = &rest[start + "tensor '".len()..];
+        if let Some(end) = tail.find('\'') {
+            return Some(tail[..end].to_string());
+        }
+    }
+    if let Some(start) = rest.find("tensor ") {
+        let tail = rest[start + "tensor ".len()..].trim();
+        let name: String = tail
+            .chars()
+            .take_while(|c| !c.is_whitespace())
+            .collect();
+        if !name.is_empty() {
+            return Some(name);
+        }
+    }
+    None
 }
 
 /// token 数量的简短显示：1234 → 1.2k，1234567 → 1.2M
