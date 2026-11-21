@@ -70,7 +70,9 @@
     "llamaDownload": "llama 下载",
     "estimate": "显存估算",
     "applyProfile": "应用选中配置",
-    "close": "关闭"
+    "close": "关闭",
+    "kvmemDownload": "KVMem 下载",
+    "help": "帮助"
   },
   "label": {
     "select": "选择",
@@ -107,7 +109,8 @@
     "kvmemHostMib": "KVMem 内存预算 H（MiB，0=不限）",
     "kvmemDiskMib": "KVMem SSD 预算 D（MiB，0=关）",
     "kvmemConversations": "KVMem 并行会话数",
-    "kvmemDiskPath": "KVMem SSD 目录"
+    "kvmemDiskPath": "KVMem SSD 目录",
+    "ninferExe": "NInfer 引擎路径"
   },
   "menu": {
     "removeModel": "从模型库移除",
@@ -245,7 +248,8 @@
     "profileApplied": "已应用选中的配置，点「启动服务」生效",
     "estimateNote": "估算值仅供参考，实际误差约 2%~10%",
     "mtp": "模型自带 MTP（多 token 预测）层时，通过 --spec-type draft-mtp 一次预测多个 token，实测生成速度可提升 30%~40%；模型不支持时开启无效果",
-    "engine": "llama.cpp：原生引擎，兼容所有 GGUF。KVMem：把完整 KV 历史放内存/SSD，长上下文更省显存，需要单独下载 KVMem 的 llama.cpp 版包（llama-kvmem-server.exe）放进程序目录。选模型时会按权重大小自动切换（>8 GB 走 KVMem），也可在此手动覆盖。"
+    "engine": "llama.cpp：原生引擎，兼容所有 GGUF。KVMem：把完整 KV 历史放内存/SSD，长上下文更省显存，需要单独下载 KVMem 的 llama.cpp 版包（llama-kvmem-server.exe）放进程序目录。选模型时会按权重大小自动切换（>8 GB 走 KVMem），也可在此手动覆盖。",
+    "engineMissing": "该模型缺少可用引擎，请点「KVMem 下载」或「llama 下载」获取对应引擎"
   },
   "err": {
     "network": "网络错误",
@@ -265,7 +269,8 @@
     "unknownArch": "该模型的架构 {arch} 不被当前 llama-server 支持（b12549），请更新 llama.cpp 或换用兼容的模型文件。",
     "noLlamaServer": "未发现 llama-server，请进「高级设置 → llama-server 路径」选择",
     "tensorMismatch": "该模型与当前 llama.cpp 版本不兼容：缺少张量 {tensor}。通常是模型比 llama.cpp 新（或用了循环层等新特性），请更新 llama.cpp，或换用该版本能加载的量化文件。",
-    "kvmemNotFound": "未找到 KVMem 引擎：请把 KVMem 的 llama-kvmem-server.exe 放进程序目录，或在此处改回 llama.cpp 引擎"
+    "kvmemNotFound": "未找到 KVMem 引擎：请把 KVMem 的 llama-kvmem-server.exe 放进程序目录，或在此处改回 llama.cpp 引擎",
+    "ninferNotFound": "未找到 NInfer 引擎：请下载 KVMem 的 NInfer 版包（含 infer-kvmem-server.exe）并放进程序目录，或在下拉里改用其他引擎"
   },
   "chat": {
     "title": "测试聊天",
@@ -287,5 +292,10 @@
   },
   "help": {
     "header": "以下是本程序本次将要传给 llama-server 的参数，逐条给出含义。\r\n说明依据随附 llama.cpp（b12549）的官方 --help 文案整理；每段以 * 开头的是参数本身及其取值，下面两行分别是中文解读与官方英文原文。\r\n内容比窗口长时，可用右侧滚动条或鼠标滚轮查看全部参数。"
+  },
+  "opt": {
+    "auto": "自动",
+    "on": "开启",
+    "off": "关闭"
   }
 }

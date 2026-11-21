@@ -157,6 +157,7 @@ extern "system" {
     pub fn EndPaint(hwnd: HWND, ps: *const c_void) -> i32;
     pub fn GetParent(hwnd: HWND) -> HWND;
     pub fn IsWindowVisible(hwnd: HWND) -> i32;
+    pub fn IsWindow(hwnd: HWND) -> i32;
     pub fn GetWindowRect(hwnd: HWND, rect: *mut RECT) -> i32;
     pub fn ScreenToClient(hwnd: HWND, pt: *mut POINT) -> i32;
     pub fn GetClassNameW(hwnd: HWND, buf: *mut u16, max: i32) -> i32;
@@ -598,6 +599,16 @@ pub fn combo_add(hwnd: HWND, text: &str) {
     let w = wide(text);
     unsafe {
         SendMessageW(hwnd, CB_ADDSTRING, 0, w.as_ptr() as LPARAM);
+    }
+}
+
+/// 当前选中项下标（无选中返回 0）
+pub fn combo_index(hwnd: HWND) -> usize {
+    let i = unsafe { SendMessageW(hwnd, 0x0147, 0, 0) }; // CB_GETCURSEL
+    if i < 0 {
+        0
+    } else {
+        i as usize
     }
 }
 

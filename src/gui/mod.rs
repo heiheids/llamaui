@@ -197,6 +197,9 @@ pub struct Gui {
     pub btn_log_clear: HWND,
     /// 「llama 下载」按钮：打开 llama.cpp releases 页面
     pub btn_llama_dl: HWND,
+    /// 「KVMem 下载」与「帮助」按钮
+    pub btn_kvmem_dl: HWND,
+    pub btn_help: HWND,
     pub tip: HWND,
     /// 悬停提示窗（如“不支持加载该模型”）
     pub hover_wnd: HWND,
@@ -513,6 +516,10 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                     if g.auto_hwnd == hwnd {
                         g.auto_hwnd = 0;
                         g.auto_fields.clear();
+                    // 显存估算窗口：X 关闭也要清句柄，否则再次点“显存估算”打不开
+                    if g.fit_hwnd == hwnd {
+                        g.fit_hwnd = 0;
+                    }
                     }
                 });
                 DestroyWindow(hwnd);
@@ -548,6 +555,10 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                     if g.auto_hwnd == hwnd {
                         g.auto_hwnd = 0;
                         g.auto_fields.clear();
+                    // 显存估算窗口：X 关闭也要清句柄，否则再次点“显存估算”打不开
+                    if g.fit_hwnd == hwnd {
+                        g.fit_hwnd = 0;
+                    }
                     }
                 });
             }

@@ -203,6 +203,16 @@ pub fn on_command(g: &mut Gui, hwnd: HWND, id: usize, code: u32) {
                 open_url("https://github.com/ggml-org/llama.cpp/releases");
             }
         }
+        ID_KVMEM_DL => {
+            if code == 0 {
+                open_url("https://github.com/kvmem/kvmem/releases");
+            }
+        }
+        ID_HELP => {
+            if code == 0 {
+                open_help_doc(g);
+            }
+        }
         layout::ID_CTX_REMOVE => {
             if code == 0 {
                 remove_selected(g);
@@ -835,11 +845,23 @@ fn collect_patch(g: &Gui) -> Json {
             let val = match ac.kind {
                 Kind::Bool => Json::Bool(check_get(ac.hwnd)),
                 Kind::Select => {
-                    let t = combo_text(ac.hwnd);
-                    if t.trim().is_empty() {
-                        continue;
+                    // 下拉显示的是本地化文案，值必须按下标回读 options
+                    let idx = combo_index(ac.hwnd);
+                    let opts: &'static [&'static str] = crate::settings::FIELDS
+                        .iter()
+                        .find(|f| f.key == ac.key)
+                        .map(|f| f.options)
+                        .unwrap_or(&[]);
+                    match opts.get(idx) {
+                        Some(v) => Json::str(*v),
+                        None => {
+                            let t = combo_text(ac.hwnd);
+                            if t.trim().is_empty() {
+                                continue;
+                            }
+                            Json::str(&t)
+                        }
                     }
-                    Json::str(&t)
                 }
                 _ => {
                     let t = get_text(ac.hwnd);
@@ -882,7 +904,13 @@ fn collect_patch(g: &Gui) -> Json {
         }
         let value = match ctl.kind {
             Kind::Bool => Json::Bool(check_get(ctl.hwnd)),
-            Kind::Select => Json::str(combo_text(ctl.hwnd)),
+            Kind::Select => {
+                let idx = combo_index(ctl.hwnd);
+                match ctl.options.get(idx) {
+                    Some(v) => Json::str(*v),
+                    None => Json::str(&combo_text(ctl.hwnd)),
+                }
+            }
             Kind::Int => {
                 let raw = get_text(ctl.hwnd);
                 Json::Num(raw.trim().parse::<i64>().unwrap_or(0) as f64)
@@ -1537,6 +1565,7 @@ const APP_EXTRA: &[(&str, Kind, &str, &'static [&'static str])] = &[
     ("app.llamaExe", Kind::Text, "label.llamaExe", &[]),
     // KVMem 引擎专用（仅当引擎选 KVMem 时生效）
     ("app.kvmemExe", Kind::Text, "label.kvmemExe", &[]),
+    ("app.ninferExe", Kind::Text, "label.ninferExe", &[]),
     ("kvmem.budget", Kind::Int, "label.kvmemBudget", &[]),
     ("kvmem.reserve", Kind::Int, "label.kvmemReserve", &[]),
     ("kvmem.hostMib", Kind::Int, "label.kvmemHostMib", &[]),
@@ -1580,25 +1609,58 @@ fn check_vram_risk(g: &mut Gui) {
     }
 }
 
+/// 打开帮助文档：按当前界面语言选中中文或英文说明
+fn open_help_doc(g: &mut Gui) {
+    let lang = crate::i18n::resolve(&cfg(g));
+    let zh = lang.starts_with("zh");
+    let name = if zh { "docs/USAGE.zh-CN.md" } else { "docs/USAGE.md" };
+    let base = crate::util::base_dir();
+    let path = base.join(name);
+    if path.is_file() {
+        open_url(&path.to_string_lossy());
+    } else {
+        // 文档缺失时退回在线说明
+        open_url(if zh {
+            "https://github.com/heiheids/llamaui/blob/main/docs/USAGE.zh-CN.md"
+        } else {
+            "https://github.com/heiheids/llamaui/blob/main/docs/USAGE.md"
+        });
+    }
+}
+
 /// 按模型权重自动挑选引擎：> 8 GB 走 KVMem，其余保持 llama.cpp。
 /// KVMem 引擎未安装时保持 llama.cpp 并在日志说明，避免“点了起不来”。
 fn auto_pick_engine(g: &mut Gui) {
     const BIG_MODEL_GB: f64 = 8.0;
-    let (size, name) = match g.shared.lock() {
+    let (size, name, path) = match g.shared.lock() {
         Ok(app) => app
             .lib
             .find(&g.selected_id)
-            .map(|m| (m.size, m.name.clone()))
-            .unwrap_or((0, String::new())),
+            .map(|m| (m.size, m.name.clone(), m.path.clone()))
+            .unwrap_or((0, String::new(), String::new())),
         Err(_) => return,
     };
+    let ext = std::path::Path::new(&path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
     let gb = size as f64 / 1e9;
-    let want_kvmem = gb > BIG_MODEL_GB;
+
+    // 目标引擎：.ninfer 只能走 NInfer；GGUF 按大小选；其余回 llama.cpp
+    let want = if ext == "ninfer" {
+        "NInfer"
+    } else if ext == "gguf" && gb > BIG_MODEL_GB {
+        "KVMem"
+    } else {
+        "llama.cpp"
+    };
+
     let mut app = match g.shared.lock() {
         Ok(a) => a,
         Err(_) => return,
     };
-    // 没探测到 KVMem 就把路径补上
+    // 先把两个引擎的 exe 路径补上（没有就探测）
     if crate::process::Launcher::kvmem_exe(&app.store.cfg).is_empty() {
         let found = crate::process::Launcher::detect_kvmem_exe();
         if !found.is_empty() {
@@ -1606,41 +1668,50 @@ fn auto_pick_engine(g: &mut Gui) {
             let _ = app.store.save();
         }
     }
-    let have_kvmem = !crate::process::Launcher::kvmem_exe(&app.store.cfg).is_empty();
-    let current = crate::process::Launcher::is_kvmem(&app.store.cfg);
-    // 想要 KVMem 但本机没有：保持 llama.cpp，并提示一次
-    if want_kvmem && !have_kvmem {
-        if !app.store.cfg.b("app.kvmemNoticeShown", false) {
+    if crate::process::Launcher::ninfer_exe(&app.store.cfg).is_empty() {
+        let found = crate::process::Launcher::detect_ninfer_exe();
+        if !found.is_empty() {
+            app.store.cfg.set_path("app.ninferExe", Json::str(&found));
+            let _ = app.store.save();
+        }
+    }
+    let have = |e: &str| -> bool {
+        match e {
+            "NInfer" => !crate::process::Launcher::ninfer_exe(&app.store.cfg).is_empty(),
+            "KVMem" => !crate::process::Launcher::kvmem_exe(&app.store.cfg).is_empty(),
+            _ => true,
+        }
+    };
+    if !have(want) {
+        // 需要的引擎没装：保持原引擎，并提示一次去下载
+        if !app.store.cfg.b("app.engineNoticeShown", false) {
             app.store
                 .cfg
-                .set_path("app.kvmemNoticeShown", Json::Bool(true));
+                .set_path("app.engineNoticeShown", Json::Bool(true));
             let _ = app.store.save();
             app.launcher.push_log(
                 &format!(
-                    "{} is {:.1} GB: KVMem engine not installed, keeping llama.cpp \
-                     (put llama-kvmem-server.exe in the app folder to enable it)",
-                    name, gb
+                    "{} ({:.1} GB, .{}) needs the {} engine, which is not installed - \
+                     use the Get KVMem button to download the matching package",
+                    name, gb, ext, want
                 ),
                 "",
             );
+            let msg = i18n(g, "hint.engineMissing");
+            set_text(g.lbl_hint, &msg);
         }
         return;
     }
-    let target = want_kvmem && have_kvmem;
-    if target == current {
+    let current = crate::process::Launcher::engine_of(&app.store.cfg);
+    if current == want {
         return;
     }
     app.store
         .cfg
-        .set_path("launch.engine", Json::str(if target { "KVMem" } else { "llama.cpp" }));
+        .set_path("launch.engine", Json::str(want));
     let _ = app.store.save();
     app.launcher.push_log(
-        &format!(
-            "engine switched to {} for {} ({:.1} GB)",
-            if target { "KVMem" } else { "llama.cpp" },
-            name,
-            gb
-        ),
+        &format!("engine switched to {} for {} ({:.1} GB)", want, name, gb),
         "",
     );
     drop(app);
@@ -1649,9 +1720,13 @@ fn auto_pick_engine(g: &mut Gui) {
 
 /// 打开「显存估算」窗口：按当前机器实际显存，列出几种可选配置
 fn open_fit_window(g: &mut Gui) {
+    // 用户可能用右上角 X 关掉了窗口（句柄已失效），先验证还活着再复用
     if g.fit_hwnd != 0 {
-        show(g.fit_hwnd, true);
-        return;
+        if unsafe { IsWindow(g.fit_hwnd) } != 0 {
+            show(g.fit_hwnd, true);
+            return;
+        }
+        g.fit_hwnd = 0;
     }
     let title = format!("{} — {}", i18n(g, "button.estimate"), i18n(g, "app.title"));
     let style = 0x00C0_0000 | 0x0008_0000;

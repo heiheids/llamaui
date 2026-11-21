@@ -158,7 +158,7 @@ const fn flt(
 
 pub const SELECT_YES_NO: &[&str] = &["auto", "on", "off"];
 /// 推理引擎：llama.cpp 原生，或 KVMem（需自带 llama-kvmem-server.exe）
-pub const SELECT_ENGINE: &[&str] = &["llama.cpp", "KVMem"];
+pub const SELECT_ENGINE: &[&str] = &["llama.cpp", "KVMem", "NInfer"];
 pub const SELECT_LOAD_MODE: &[&str] = &["auto", "none", "mmap", "mlock", "mmap+mlock"];
 pub const SELECT_SPLIT: &[&str] = &["auto", "none", "layer", "row", "tensor"];
 pub const SELECT_CACHE: &[&str] = &["f16", "f32", "bf16", "q8_0", "q5_1", "q5_0", "q4_1", "q4_0", "iq4_nl"];
@@ -361,7 +361,72 @@ fn push_num(args: &mut Vec<String>, flag: &str, cfg: &Json, key: &str, skip: f64
     }
 }
 
-/// 依据配置与模型路径生成 llama-server 参数
+/// NInfer 引擎（infer-kvmem-server.exe）的命令行。
+/// 模型是**位置参数**，不接受 -m；参数集也和 llama.cpp 完全不同，
+/// 所以单独构建，绝不混入 llama 的参数。
+fn build_ninfer_args(cfg: &Json, model_path: &str) -> Vec<String> {
+    let mut a: Vec<String> = Vec::new();
+    a.push(model_path.to_string());
+
+    a.push("--host".into());
+    a.push(bind_host(cfg));
+    a.push("--port".into());
+    a.push(cfg.i("network.port", 9931).to_string());
+    let keys = api_keys(cfg);
+    if cfg.b("network.apiKeyEnabled", true) && !keys.is_empty() {
+        a.push("--api-key".into());
+        a.push(keys.join(","));
+    }
+    a.push("--no-webui".into());
+
+    let alias = cfg.s("launch.alias", "");
+    if !alias.trim().is_empty() {
+        a.push("--model-id".into());
+        a.push(alias.trim().to_string());
+    }
+    let np = cfg.i("launch.parallel", 1).clamp(1, 8);
+    if np > 1 {
+        a.push("--max-concurrency".into());
+        a.push(np.to_string());
+    }
+
+    // KVMem：B + R 必须 <= max-context
+    if cfg.b("kvmem.enabled", true) {
+        a.push("--kvmem".into());
+    }
+    let budget = cfg.i("kvmem.budget", 32768).max(64);
+    let reserve = cfg.i("kvmem.reserve", 4096).max(64);
+    a.push("--kvmem-budget".into());
+    a.push(budget.to_string());
+    a.push("--kvmem-gen-reserve".into());
+    a.push(reserve.to_string());
+    let host = cfg.i("kvmem.hostMib", 8192);
+    if host > 0 {
+        a.push("--kvmem-host-mib".into());
+        a.push(host.to_string());
+    }
+    let conv = cfg.i("kvmem.conversations", 1);
+    if conv > 1 {
+        a.push("--kvmem-sessions".into());
+        a.push(conv.to_string());
+    }
+    let disk = cfg.i("kvmem.diskMib", 0);
+    if disk > 0 {
+        a.push("--kvmem-disk-mib".into());
+        a.push(disk.to_string());
+        let dir = cfg.s("kvmem.diskPath", "");
+        if !dir.trim().is_empty() {
+            a.push("--kvmem-disk-path".into());
+            a.push(crate::util::absolutize(dir.trim()));
+        }
+    }
+    let ctx = cfg.i("launch.ctxSize", 8192);
+    let need = budget + reserve + 64;
+    a.push("--max-context".into());
+    a.push(ctx.max(need).to_string());
+    a
+}
+
 /// KVMem 引擎（llama-kvmem-server.exe）的命令行。
 /// 它只认长参数（--ctx-size / --gpu-layers / --flash-attn ...），
 /// 另有一整套 --kvmem-* 控制 KV 历史在显存/内存/SSD 之间怎么放。
@@ -484,7 +549,12 @@ fn push_f(flag: &str, cfg: &Json, key: &str, def: f64, a: &mut Vec<String>) {
     }
 }
 
+/// 依据配置与模型路径生成启动参数（按引擎分派）
 pub fn build_args(cfg: &Json, model_path: &str) -> Vec<String> {
+    // NInfer 引擎：模型是位置参数、参数集完全不同，单独构建
+    if crate::process::Launcher::is_ninfer(cfg) {
+        return build_ninfer_args(cfg, model_path);
+    }
     // KVMem 引擎（llama-kvmem-server.exe）用长参数 + 一整套 --kvmem-*，
     // 和 llama-server 的短参数不兼容，单独构建
     if crate::process::Launcher::is_kvmem(cfg) {

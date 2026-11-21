@@ -148,14 +148,20 @@ impl Launcher {
         }
     }
 
-    /// 当前是否选中 KVMem 引擎
+    /// 当前是否选中 KVMem 引擎（llama.cpp 后端，吃 GGUF）
     pub fn is_kvmem(cfg: &Json) -> bool {
-        Self::engine_of(cfg).to_ascii_lowercase().contains("kvmem")
+        let e = Self::engine_of(cfg).to_ascii_lowercase();
+        e.contains("kvmem") && !e.contains("ninfer")
+    }
+
+    /// 当前是否选中 NInfer 引擎（吃 .ninfer）
+    pub fn is_ninfer(cfg: &Json) -> bool {
+        Self::engine_of(cfg).to_ascii_lowercase().contains("ninfer")
     }
 
     /// 在程序目录内自动查找 KVMem 引擎（llama-kvmem-server.exe），找不到返回空串
     pub fn detect_kvmem_exe() -> String {
-        let names = ["llama-kvmem-server.exe", "llama-kvmem-server", "kvmem-server.exe"];
+        let names = ["llama-kvmem-server.exe", "llama-kvmem-server"];
         let base = util::base_dir();
         let mut stack = vec![(base.clone(), 0usize)];
         while let Some((dir, depth)) = stack.pop() {
@@ -178,6 +184,44 @@ impl Launcher {
         String::new()
     }
 
+    /// 在程序目录内自动查找 NInfer 引擎（infer-kvmem-server.exe）
+    pub fn detect_ninfer_exe() -> String {
+        Self::detect_exe_named(&["infer-kvmem-server.exe", "ninfer-kvmem-server.exe", "ninfer-serve.exe"])
+    }
+
+    fn detect_exe_named(names: &[&str]) -> String {
+        let base = util::base_dir();
+        let mut stack = vec![(base.clone(), 0usize)];
+        while let Some((dir, depth)) = stack.pop() {
+            if depth > 4 {
+                continue;
+            }
+            let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+            for e in rd.flatten() {
+                let path = e.path();
+                if path.is_file() {
+                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    if names.iter().any(|n| n.eq_ignore_ascii_case(name)) {
+                        return path.to_string_lossy().to_string();
+                    }
+                } else if path.is_dir() {
+                    stack.push((path, depth + 1));
+                }
+            }
+        }
+        String::new()
+    }
+
+    /// NInfer 引擎的 exe 路径
+    pub fn ninfer_exe(cfg: &Json) -> String {
+        let p = cfg.s("app.ninferExe", "");
+        let t = p.trim();
+        if !t.is_empty() && std::path::Path::new(t).is_file() {
+            return t.to_string();
+        }
+        String::new()
+    }
+
     /// KVMem 版引擎的 exe 路径（未配置或文件不存在时返回空串）
     pub fn kvmem_exe(cfg: &Json) -> String {
         let p = cfg.s("app.kvmemExe", "");
@@ -190,6 +234,14 @@ impl Launcher {
 
     /// 定位推理引擎可执行文件（按 launch.engine 在 llama / kvmem 之间切换）
     pub fn resolve_exe(cfg: &Json) -> Result<PathBuf, String> {
+        // NInfer 引擎：需要 infer-kvmem-server.exe
+        if Self::is_ninfer(cfg) {
+            let ni = Self::ninfer_exe(cfg);
+            if !ni.is_empty() {
+                return Ok(PathBuf::from(ni));
+            }
+            return Err("err.ninferNotFound".to_string());
+        }
         // 选了 KVMem 引擎：必须有自己的 llama-kvmem-server.exe
         if Self::is_kvmem(cfg) {
             let kv = Self::kvmem_exe(cfg);
@@ -350,6 +402,36 @@ impl Launcher {
         // 以可执行文件所在目录为工作目录：DLL 与相对资源按此处解析
         if let Some(dir) = exe.parent() {
             cmd.current_dir(dir);
+        }
+        // KVMem 的 worker 依赖同包内的 CUDA 运行库（runtime\cuda），
+        // 直接把 worker 启动会缺 DLL，所以把这些目录补进子进程的 PATH
+        {
+            let mut extra: Vec<std::path::PathBuf> = Vec::new();
+            if let Some(dir) = exe.parent() {
+                extra.push(dir.to_path_buf());
+                let mut anc = dir.parent();
+                for _ in 0..3 {
+                    if let Some(a) = anc {
+                        for sub in ["runtime\\cuda", "runtime", "workers\\llamacpp"] {
+                            let p = a.join(sub);
+                            if p.is_dir() {
+                                extra.push(p);
+                            }
+                        }
+                        anc = a.parent();
+                    }
+                }
+            }
+            if !extra.is_empty() {
+                let cur = std::env::var("PATH").unwrap_or_default();
+                let mut merged = String::new();
+                for p in extra.iter() {
+                    merged.push_str(&p.to_string_lossy());
+                    merged.push(';');
+                }
+                merged.push_str(&cur);
+                cmd.env("PATH", merged);
+            }
         }
         cmd.stdin(Stdio::null())
             .stdout(Stdio::piped())

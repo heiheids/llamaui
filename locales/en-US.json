@@ -69,7 +69,9 @@
     "llamaDownload": "Get llama",
     "estimate": "VRAM estimate",
     "applyProfile": "Apply selected",
-    "close": "Close"
+    "close": "Close",
+    "kvmemDownload": "Get KVMem",
+    "help": "Help"
   },
   "label": {
     "select": "Select",
@@ -106,7 +108,8 @@
     "kvmemHostMib": "KVMem RAM budget H (MiB, 0 = unlimited)",
     "kvmemDiskMib": "KVMem SSD budget D (MiB, 0 = off)",
     "kvmemConversations": "KVMem live conversations",
-    "kvmemDiskPath": "KVMem SSD directory"
+    "kvmemDiskPath": "KVMem SSD directory",
+    "ninferExe": "NInfer engine path"
   },
   "menu": {
     "removeModel": "Remove from library",
@@ -244,7 +247,8 @@
     "profileApplied": "Profile applied; start the service to take effect",
     "estimateNote": "Estimates only; actual usage differs by roughly 2-10%",
     "mtp": "When the model ships MTP (multi-token prediction) layers, --spec-type draft-mtp predicts several tokens at once; measured 30-40% faster generation. No effect if the model has no MTP layers.",
-    "engine": "llama.cpp: the native engine, works with any GGUF. KVMem: keeps the full KV history in RAM/SSD so long contexts cost far less VRAM; needs KVMem's separate llama.cpp package (llama-kvmem-server.exe) in the app folder. Selecting a model auto-picks the engine by size (>8 GB goes to KVMem); you can override it here."
+    "engine": "llama.cpp: the native engine, works with any GGUF. KVMem: keeps the full KV history in RAM/SSD so long contexts cost far less VRAM; needs KVMem's separate llama.cpp package (llama-kvmem-server.exe) in the app folder. Selecting a model auto-picks the engine by size (>8 GB goes to KVMem); you can override it here.",
+    "engineMissing": "No usable engine for this model - use Get KVMem or Get llama to download one"
   },
   "err": {
     "network": "Network error",
@@ -264,7 +268,8 @@
     "unknownArch": "Architecture {arch} is not supported by the bundled llama-server (b12549). Update llama.cpp or use a compatible model file.",
     "noLlamaServer": "llama-server not found; pick it in Advanced settings → llama-server path",
     "tensorMismatch": "This model is incompatible with the current llama.cpp build: tensor {tensor} is missing. Usually the model is newer than llama.cpp (or uses new features such as looped layers). Update llama.cpp, or use a quant this build can load.",
-    "kvmemNotFound": "KVMem engine not found: put KVMem's llama-kvmem-server.exe in the app folder, or switch back to llama.cpp here"
+    "kvmemNotFound": "KVMem engine not found: put KVMem's llama-kvmem-server.exe in the app folder, or switch back to llama.cpp here",
+    "ninferNotFound": "NInfer engine not found: download KVMem's NInfer package (containing infer-kvmem-server.exe) into the app folder, or pick another engine"
   },
   "chat": {
     "title": "Test chat",
@@ -286,5 +291,10 @@
   },
   "help": {
     "header": "These are the arguments this build will pass to llama-server, explained one by one.\r\nDescriptions are based on the official --help of the bundled llama.cpp (b12549). Lines starting with * are the flag and its value; the next two lines give the Chinese explanation and the official English text.\r\nScroll with the wheel or the scrollbar on the right to see every argument."
+  },
+  "opt": {
+    "auto": "auto",
+    "on": "on",
+    "off": "off"
   }
 }
