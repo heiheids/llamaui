@@ -154,7 +154,7 @@ o.set("vision", Json::Bool(m.vision));
             let pb = PathBuf::from(p);
             if pb.is_dir() {
                 scan_dir(&pb, 0, &mut found);
-            } else if pb.is_file() && is_gguf(&pb) {
+            } else if pb.is_file() && is_model_file(&pb) {
                 found.push(pb);
             }
         }
@@ -391,6 +391,17 @@ pub fn llama_dirs() -> Vec<String> {
     names
 }
 
+/// 是否是本程序能管理的模型文件：llama.cpp 系（.gguf）与 KVMem NInfer 系（.ninfer）
+fn is_model_file(p: &Path) -> bool {
+    if is_gguf(p) {
+        return true;
+    }
+    p.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("ninfer"))
+        .unwrap_or(false)
+}
+
 fn is_gguf(p: &Path) -> bool {
     p.extension()
         .map(|e| e.to_string_lossy().eq_ignore_ascii_case("gguf"))
@@ -515,7 +526,7 @@ fn scan_dir(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
                 continue;
             }
             scan_dir(&p, depth + 1, out);
-        } else if ft.is_file() && is_gguf(&p) {
+        } else if ft.is_file() && is_model_file(&p) {
             out.push(p);
         }
     }

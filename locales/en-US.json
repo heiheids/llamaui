@@ -99,7 +99,14 @@
     "autoFilter": "Filter",
     "autoMatch": "matches",
     "builtinDir": "built-in",
-    "vram": "VRAM"
+    "vram": "VRAM",
+    "kvmemExe": "KVMem engine path",
+    "kvmemBudget": "KVMem GPU working set B (tokens)",
+    "kvmemReserve": "KVMem generation reserve R (tokens)",
+    "kvmemHostMib": "KVMem RAM budget H (MiB, 0 = unlimited)",
+    "kvmemDiskMib": "KVMem SSD budget D (MiB, 0 = off)",
+    "kvmemConversations": "KVMem live conversations",
+    "kvmemDiskPath": "KVMem SSD directory"
   },
   "menu": {
     "removeModel": "Remove from library",

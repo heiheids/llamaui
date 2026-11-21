@@ -1533,8 +1533,17 @@ fn unknown_arch_of(line: &str) -> Option<String> {
 
 // ---------------- 高级设置窗口（二级页面） ----------------
 
-const APP_EXTRA: &[(&str, Kind, &str, &'static [&'static str])] =
-    &[("app.llamaExe", Kind::Text, "label.llamaExe", &[])];
+const APP_EXTRA: &[(&str, Kind, &str, &'static [&'static str])] = &[
+    ("app.llamaExe", Kind::Text, "label.llamaExe", &[]),
+    // KVMem 引擎专用（仅当引擎选 KVMem 时生效）
+    ("app.kvmemExe", Kind::Text, "label.kvmemExe", &[]),
+    ("kvmem.budget", Kind::Int, "label.kvmemBudget", &[]),
+    ("kvmem.reserve", Kind::Int, "label.kvmemReserve", &[]),
+    ("kvmem.hostMib", Kind::Int, "label.kvmemHostMib", &[]),
+    ("kvmem.diskMib", Kind::Int, "label.kvmemDiskMib", &[]),
+    ("kvmem.conversations", Kind::Int, "label.kvmemConversations", &[]),
+    ("kvmem.diskPath", Kind::Text, "label.kvmemDiskPath", &[]),
+];
 
 /// 打开「参数解读」窗口：把当前启动参数逐条拆开，配中英文说明
 /// 显存风险检查：服务运行中且显存几乎占满时，在日志上方给出置顶警示

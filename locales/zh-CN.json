@@ -100,7 +100,14 @@
     "autoFilter": "筛选",
     "autoMatch": "匹配",
     "builtinDir": "程序自带",
-    "vram": "显存"
+    "vram": "显存",
+    "kvmemExe": "KVMem 引擎路径",
+    "kvmemBudget": "KVMem 显存工作集 B（tokens）",
+    "kvmemReserve": "KVMem 生成预留 R（tokens）",
+    "kvmemHostMib": "KVMem 内存预算 H（MiB，0=不限）",
+    "kvmemDiskMib": "KVMem SSD 预算 D（MiB，0=关）",
+    "kvmemConversations": "KVMem 并行会话数",
+    "kvmemDiskPath": "KVMem SSD 目录"
   },
   "menu": {
     "removeModel": "从模型库移除",

@@ -362,7 +362,134 @@ fn push_num(args: &mut Vec<String>, flag: &str, cfg: &Json, key: &str, skip: f64
 }
 
 /// 依据配置与模型路径生成 llama-server 参数
+/// KVMem 引擎（llama-kvmem-server.exe）的命令行。
+/// 它只认长参数（--ctx-size / --gpu-layers / --flash-attn ...），
+/// 另有一整套 --kvmem-* 控制 KV 历史在显存/内存/SSD 之间怎么放。
+fn build_kvmem_args(cfg: &Json, model_path: &str) -> Vec<String> {
+    let mut a: Vec<String> = Vec::new();
+    a.push("-m".into());
+    a.push(model_path.to_string());
+
+    let mmproj = cfg.s("launch.mmproj", "");
+    let mmproj = mmproj.trim().to_string();
+    if cfg.b("launch.vision", true) && !mmproj.is_empty() {
+        a.push("--mmproj".into());
+        a.push(crate::util::absolutize(&mmproj));
+    }
+
+    let alias = {
+        let raw = cfg.s("launch.alias", "");
+        if raw.trim().is_empty() {
+            std::path::Path::new(model_path)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default()
+        } else {
+            raw.trim().to_string()
+        }
+    };
+    if !alias.is_empty() {
+        a.push("--alias".into());
+        a.push(alias);
+    }
+
+    a.push("--ctx-size".into());
+    a.push(cfg.i("launch.ctxSize", 8192).to_string());
+    a.push("--gpu-layers".into());
+    a.push(cfg.i("launch.nGpuLayers", 99).to_string());
+
+    let fa = cfg.s("launch.flashAttn", "auto");
+    if fa != "auto" {
+        a.push("--flash-attn".into());
+        a.push(fa);
+    }
+    a.push("--cache-type-k".into());
+    a.push(cfg.s("cache.typeK", "f16"));
+    a.push("--cache-type-v".into());
+    a.push(cfg.s("cache.typeV", "f16"));
+    if cfg.b("launch.jinja", true) {
+        a.push("--jinja".into());
+    }
+    let np = cfg.i("launch.parallel", 1);
+    if np > 1 {
+        a.push("--parallel".into());
+        a.push(np.to_string());
+    }
+    let thr = cfg.i("launch.threads", 0);
+    if thr > 0 {
+        a.push("--threads".into());
+        a.push(thr.to_string());
+    }
+
+    // ---- KVMem 核心参数 ----
+    if cfg.b("kvmem.enabled", true) {
+        a.push("--kvmem".into());
+    }
+    let budget = cfg.i("kvmem.budget", 32768);
+    if budget > 0 {
+        a.push("--kvmem-budget".into());
+        a.push(budget.to_string());
+    }
+    let reserve = cfg.i("kvmem.reserve", 4096);
+    if reserve > 0 {
+        a.push("--kvmem-gen-reserve".into());
+        a.push(reserve.to_string());
+    }
+    let host = cfg.i("kvmem.hostMib", 8192);
+    if host > 0 {
+        a.push("--kvmem-host-mib".into());
+        a.push(host.to_string());
+    }
+    let disk = cfg.i("kvmem.diskMib", 0);
+    if disk > 0 {
+        a.push("--kvmem-disk-mib".into());
+        a.push(disk.to_string());
+        let dir = cfg.s("kvmem.diskPath", "");
+        let dir = dir.trim().to_string();
+        if !dir.is_empty() {
+            a.push("--kvmem-disk-path".into());
+            a.push(crate::util::absolutize(&dir));
+        }
+    }
+    let conv = cfg.i("kvmem.conversations", 1);
+    if conv > 1 {
+        a.push("--kvmem-conversations".into());
+        a.push(conv.to_string());
+    }
+
+    // 网络与采样
+    a.push("--host".into());
+    a.push(bind_host(cfg));
+    a.push("--port".into());
+    a.push(cfg.i("network.port", 9931).to_string());
+    let keys = api_keys(cfg);
+    if cfg.b("network.apiKeyEnabled", true) && !keys.is_empty() {
+        a.push("--api-key".into());
+        a.push(keys.join(","));
+    }
+    a.push("--no-ui".into());
+    push_f("--temp", cfg, "sampling.temp", 0.8, &mut a);
+    push_f("--top-p", cfg, "sampling.topP", 0.95, &mut a);
+    push_f("--min-p", cfg, "sampling.minP", 0.05, &mut a);
+    push_f("--repeat-penalty", cfg, "sampling.repeatPenalty", 1.1, &mut a);
+    a
+}
+
+/// 浮点参数：与默认值不同才写入
+fn push_f(flag: &str, cfg: &Json, key: &str, def: f64, a: &mut Vec<String>) {
+    let v = cfg.path(key).and_then(|x| x.as_f64()).unwrap_or(def);
+    if (v - def).abs() > 1e-9 {
+        a.push(flag.to_string());
+        a.push(format!("{}", v));
+    }
+}
+
 pub fn build_args(cfg: &Json, model_path: &str) -> Vec<String> {
+    // KVMem 引擎（llama-kvmem-server.exe）用长参数 + 一整套 --kvmem-*，
+    // 和 llama-server 的短参数不兼容，单独构建
+    if crate::process::Launcher::is_kvmem(cfg) {
+        return build_kvmem_args(cfg, model_path);
+    }
     let mut a: Vec<String> = Vec::new();
     a.push("-m".into());
     a.push(model_path.to_string());
