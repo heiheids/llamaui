@@ -16,6 +16,41 @@ pub struct GgufInfo {
     /// rope 缩放后的原始上下文（存在 yarn 等缩放时参考）
     pub ctx_original: u32,
     pub name: String,
+    /// 是否带分词器元数据。语言模型必有；扩散/图像模型没有
+    pub has_tokenizer: bool,
+}
+
+/// 是否是「能对话/能补全」的语言模型。
+/// 扩散类（Stable Diffusion / Qwen-Image / Flux / 视频模型等）虽然也是 GGUF，
+/// 但 llama.cpp 跑不了它们，也不该出现在模型库里。
+pub fn is_chat_model(info: &GgufInfo) -> bool {
+    const NON_CHAT: &[&str] = &[
+        "image",
+        "flux",
+        "diffus",
+        "vae",
+        "video",
+        "stable-diffusion",
+        "sd3",
+        "sd15",
+        "sdxl",
+        "wan",
+        "ltx",
+        "mochi",
+        "pixart",
+        "lumina",
+        "kolors",
+        "hidream",
+        "chroma",
+        "auraflow",
+        "cosmos",
+    ];
+    let arch = info.arch.to_ascii_lowercase();
+    if NON_CHAT.iter().any(|k| arch.contains(k)) {
+        return false;
+    }
+    // 没有分词器、也没有上下文长度的 GGUF 不是语言模型
+    info.has_tokenizer || info.ctx_native > 0
 }
 
 pub fn read(path: &str) -> Option<GgufInfo> {
@@ -55,6 +90,8 @@ pub fn read(path: &str) -> Option<GgufInfo> {
                     arch = val.clone();
                 } else if key == "general.name" {
                     info.name = val;
+                } else if key.starts_with("tokenizer.ggml.") {
+                    info.has_tokenizer = true;
                 }
             }
             4 => {

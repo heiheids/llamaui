@@ -209,7 +209,7 @@ fn import_models(app: &mut App, req: &Request, lang: &str) -> Response {
     if paths.is_empty() {
         return err_localized("err.badPayload", lang);
     }
-    let added = app.lib.import_paths(&paths);
+    let added = app.lib.import_paths(&paths).added;
     let _ = app.lib.save();
     auto_select(app);
     let mut o = Json::obj();
@@ -228,7 +228,7 @@ fn scan_models(app: &mut App, lang: &str) -> Response {
     for d in dirs {
         let real = crate::util::resolve_dir(&d);
         if real.is_dir() {
-            added += app.lib.import_paths(&[real.to_string_lossy().to_string()]);
+            added += app.lib.import_paths(&[real.to_string_lossy().to_string()]).added;
         }
     }
     // 与磁盘对齐：清理失效条目、刷新元数据

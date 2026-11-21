@@ -17,6 +17,17 @@ pub struct SyncReport {
     pub removed: usize,
     pub updated: usize,
     pub removed_names: Vec<String>,
+    /// 因为「不是对话模型」（扩散/图像等）而被跳过或移除的条目
+    pub skipped: usize,
+    pub skipped_names: Vec<String>,
+}
+
+/// 导入结果
+#[derive(Default, Clone, Debug)]
+pub struct ImportReport {
+    pub added: usize,
+    pub skipped: usize,
+    pub skipped_names: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -132,7 +143,7 @@ impl Library {
     }
 
     /// 导入一个或多个路径；目录则递归扫描（含子文件夹）
-    pub fn import_paths(&mut self, paths: &[String]) -> usize {
+    pub fn import_paths(&mut self, paths: &[String]) -> ImportReport {
         let mut found: Vec<PathBuf> = Vec::new();
         for p in paths {
             let pb = PathBuf::from(p);
@@ -142,7 +153,7 @@ impl Library {
                 found.push(pb);
             }
         }
-        let mut added = 0;
+        let mut rep = ImportReport::default();
         for f in found {
             // mmproj 是视觉投影文件，属于配套资源而不是独立模型
             if is_projector(&f) {
@@ -152,12 +163,19 @@ impl Library {
             if self.items.iter().any(|m| m.path.eq_ignore_ascii_case(&path)) {
                 continue;
             }
+            // 读一下 GGUF 头：拿原生上下文，同时判断是不是对话模型
+            let info = crate::gguf::read(&f.to_string_lossy());
+            if let Some(i) = info.as_ref() {
+                if !crate::gguf::is_chat_model(i) {
+                    // 扩散/图像/视频模型：llama.cpp 跑不了，不入库
+                    rep.skipped += 1;
+                    rep.skipped_names.push(file_stem(&path));
+                    continue;
+                }
+            }
             let size = fs::metadata(&f).map(|m| m.len()).unwrap_or(0);
             let vision = looks_like_vision(&f);
-            // 读一下 GGUF 头，拿到原生上下文长度（失败则为 0）
-            let ctx_native = crate::gguf::read(&f.to_string_lossy())
-                .map(|i| i.ctx_native)
-                .unwrap_or(0);
+            let ctx_native = info.map(|i| i.ctx_native).unwrap_or(0);
             // 同目录的视觉投影文件（识图模型启动时必须带上）
             let mmproj = find_mmproj(&f)
                 .map(|p| util::relativize(&p.to_string_lossy().to_string()))
@@ -173,9 +191,9 @@ impl Library {
                 ctx_native,
                 mmproj,
             });
-            added += 1;
+            rep.added += 1;
         }
-        added
+        rep
     }
 
     /// 与磁盘对齐：删除文件已不存在的条目、刷新已存在条目的元数据。
@@ -196,6 +214,14 @@ impl Library {
                 }
                 keep.push(m);
                 continue;
+            }
+            // 文件还在：如果是扩散/图像模型（不应入库的），顺手清掉
+            if let Some(info) = crate::gguf::read(&abs) {
+                if !crate::gguf::is_chat_model(&info) {
+                    report.skipped += 1;
+                    report.skipped_names.push(m.name.clone());
+                    continue;
+                }
             }
             let mut changed = false;
             // 大小

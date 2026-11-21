@@ -432,7 +432,8 @@ fn import_file(g: &mut Gui, hwnd: HWND) {
     let mut added_dir = false;
     let (added, total) = match g.shared.lock() {
         Ok(mut app) => {
-            let n = app.lib.import_paths(&[dir.clone()]);
+            let rep = app.lib.import_paths(&[dir.clone()]);
+            let n = rep.added;
             app.lib.refresh_vision_flags();
             let _ = app.lib.save();
             // 导入的目录也登记进扫描列表，下次「扫描目录」还能带上它
@@ -464,7 +465,10 @@ fn import_file(g: &mut Gui, hwnd: HWND) {
                 }
             }
             app.launcher.push_log(
-                &format!("import folder: {} (+{} models, added to scan list)", dir, n),
+                &format!(
+                    "import folder: {} (+{} models, {} skipped not-a-chat-model, added to scan list)",
+                    dir, n, rep.skipped
+                ),
                 "",
             );
             (n, app.lib.items.len())
@@ -489,6 +493,7 @@ fn import_file(g: &mut Gui, hwnd: HWND) {
 
 fn scan_dirs(g: &mut Gui) {
     let mut added = 0usize;
+    let mut skipped = 0usize;
     if let Ok(mut app) = g.shared.lock() {
         let mut dirs: Vec<String> = app
             .store
@@ -505,7 +510,9 @@ fn scan_dirs(g: &mut Gui) {
         for d in dirs {
             let real = crate::util::resolve_dir(&d);
             if real.is_dir() {
-                added += app.lib.import_paths(&[real.to_string_lossy().to_string()]);
+                let r = app.lib.import_paths(&[real.to_string_lossy().to_string()]);
+                added += r.added;
+                skipped += r.skipped;
             }
         }
         // 与磁盘对齐：删掉文件已消失的条目、刷新大小/视图片/上下文
@@ -529,10 +536,11 @@ fn scan_dirs(g: &mut Gui) {
         }
         app.launcher.push_log(
             &format!(
-                "scan finished: +{} added, -{} removed, {} updated (total {})",
+                "scan finished: +{} added, -{} removed, {} updated, {} skipped (not a chat model) (total {})",
                 added,
                 report.removed,
                 report.updated,
+                skipped + report.skipped,
                 app.lib.items.len()
             ),
             "",
@@ -540,6 +548,10 @@ fn scan_dirs(g: &mut Gui) {
         for n in report.removed_names.iter().take(5) {
             app.launcher
                 .push_log(&format!("  removed: {}", n), "");
+        }
+        for n in report.skipped_names.iter().take(5) {
+            app.launcher
+                .push_log(&format!("  skipped (not a chat model): {}", n), "");
         }
     }
     refresh_models(g);
