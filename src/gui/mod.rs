@@ -149,6 +149,8 @@ pub struct Gui {
     pub lbl_args: HWND,
     pub lbl_hint: HWND,
     pub lbl_log: HWND,
+    /// 日志上方的警示条（爆显存风险等）
+    pub lbl_warn: HWND,
 
     pub st_pill: HWND,
     pub st_host: HWND,
@@ -169,6 +171,8 @@ pub struct Gui {
     /// 「显存估算」按钮与窗口
     pub btn_estimate: HWND,
     pub fit_hwnd: HWND,
+    /// 已经就显存风险写过日志（避免刷屏）
+    pub vram_warned: bool,
     pub help_hwnd: HWND,
     /// 参数解读窗口里的文本控件与「生成中文解读」按钮
     pub help_view: HWND,

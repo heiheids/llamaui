@@ -282,12 +282,14 @@ pub fn build(shared: Shared, hwnd: HWND) {
         btn_param_help: 0,
         btn_estimate: 0,
         fit_hwnd: 0,
+        vram_warned: false,
         help_hwnd: 0,
         help_view: 0,
         btn_help_translate: 0,
         auto_fields: Vec::new(),
         lbl_auto: 0,
         scan_list: 0,
+        lbl_warn: 0,
         lbl_scan_dirs: 0,
         btn_scan_dir_add: 0,
         btn_auto: 0,
@@ -432,6 +434,7 @@ pub fn build(shared: Shared, hwnd: HWND) {
 
         // 右下角运行日志
         g.lbl_log = make_label(g, "");
+        g.lbl_warn = make_label(g, "");
         g.btn_log_clear = make_button(g, "", ID_LOG_CLEAR);
         g.btn_llama_dl = make_button(g, "", ID_LLAMA_DL);
         g.log_edit = create_window(
@@ -731,7 +734,9 @@ pub fn position_all(g: &mut Gui) {
     move_to(g.lbl_log, w(X0), h(y), w(240), h(20));
     move_to(g.btn_log_clear, w(1064), h(y - 2), w(100), h(CTL_H));
     move_to(g.btn_llama_dl, w(956), h(y - 2), w(100), h(CTL_H));
-    let log_top = y + 34;
+    // 顶部警示条（爆显存风险等），把日志区整体下移并缩短，给提示留出位置
+    move_to(g.lbl_warn, w(X0), h(y + 22), w(1160), h(20));
+    let log_top = y + 50;
     let log_h = 872 - log_top;
     move_to(g.log_edit, w(X0), h(log_top), w(828), h(log_h.max(80)));
 

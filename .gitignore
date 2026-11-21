@@ -32,3 +32,6 @@
 *.swp
 Thumbs.db
 desktop.ini
+
+# KVMem 引擎发行包（第三方，体积大，不入库）
+/kvmem-*/

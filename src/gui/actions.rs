@@ -254,6 +254,7 @@ pub fn on_tick(g: &mut Gui) {
     }
     refresh_status(g);
     append_logs(g);
+    check_vram_risk(g);
     // 服务真正跑起来后，清掉上次的“不支持”红标
     let running = match g.shared.lock() {
         Ok(app) => app.launcher.status_json(&app.store.cfg).s("phase", "") == "running",
@@ -1525,6 +1526,40 @@ const APP_EXTRA: &[(&str, Kind, &str, &'static [&'static str])] =
     &[("app.llamaExe", Kind::Text, "label.llamaExe", &[])];
 
 /// 打开「参数解读」窗口：把当前启动参数逐条拆开，配中英文说明
+/// 显存风险检查：服务运行中且显存几乎占满时，在日志上方给出置顶警示
+fn check_vram_risk(g: &mut Gui) {
+    let running = match g.shared.lock() {
+        Ok(app) => app.launcher.status_json(&app.store.cfg).s("phase", "") != "stopped",
+        Err(_) => false,
+    };
+    let s = crate::sysinfo::sample();
+    let risk = running
+        && s.vram_total_mb > 0
+        && s.vram_used_mb as f64 / s.vram_total_mb as f64 >= 0.95;
+    if risk {
+        let msg = i18n(g, "warn.vramRisk");
+        set_text(g.lbl_warn, &msg);
+        if !g.vram_warned {
+            g.vram_warned = true;
+            let used = s.vram_used_mb as f64 / 1024.0;
+            let total = s.vram_total_mb as f64 / 1024.0;
+            if let Ok(app) = g.shared.lock() {
+                app.launcher.push_log(
+                    &format!(
+                        "WARNING: VRAM {:.1}/{:.1} GB - risk of running out of memory; \
+                         enable KV quantization (-ctk q8_0 -ctv q8_0) or use a KVMem engine",
+                        used, total
+                    ),
+                    "",
+                );
+            }
+        }
+    } else {
+        set_text(g.lbl_warn, "");
+        g.vram_warned = false;
+    }
+}
+
 /// 打开「显存估算」窗口：按当前机器实际显存，列出几种可选配置
 fn open_fit_window(g: &mut Gui) {
     if g.fit_hwnd != 0 {
