@@ -5,6 +5,7 @@
 //! 界面是原生 Windows 窗口程序，不弹出控制台窗口。
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+mod fit;
 mod gguf;
 mod gui;
 mod i18n;

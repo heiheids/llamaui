@@ -62,6 +62,37 @@ pub fn start() {
 }
 
 /// 读取最近一次采样
+impl Sample {
+    /// (显卡名, 显存总量 GB, 已用 GB)
+    pub fn gpu_summary(&self) -> (String, f64, f64) {
+        let name = gpu_name().unwrap_or_else(|| "GPU".to_string());
+        (
+            name,
+            self.vram_total_mb as f64 / 1024.0,
+            self.vram_used_mb as f64 / 1024.0,
+        )
+    }
+}
+
+/// 显卡型号（nvidia-smi 查询，失败返回 None）
+fn gpu_name() -> Option<String> {
+    #[cfg(windows)]
+    const NO_WINDOW: u32 = 0x0800_0000;
+    let mut cmd = std::process::Command::new("nvidia-smi");
+    cmd.args(["--query-gpu=name", "--format=csv,noheader"]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(NO_WINDOW);
+    }
+    let out = cmd.output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let t = String::from_utf8_lossy(&out.stdout).lines().next()?.trim().to_string();
+    if t.is_empty() { None } else { Some(t) }
+}
+
 pub fn sample() -> Sample {
     cell().lock().map(|s| *s).unwrap_or_default()
 }

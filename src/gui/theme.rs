@@ -183,6 +183,8 @@ pub fn paint_list_item(
     selected: bool,
     vision: bool,
     unsupported: bool,
+    moe: bool,
+    list_w: i32,
     font: HFONT,
 ) {
     let bg = if selected { ACCENT } else { FIELD };
@@ -206,6 +208,31 @@ pub fn paint_list_item(
     if vision {
         draw_image_icon(hdc, rc.left + 7, rc.top + (rc.bottom - rc.top - 14) / 2, icon);
         tx = rc.left + 27;
+    }
+    // MoE 模型单独标记：贴着列表可见区域的右边画一个小色块 + "MoE"
+    // （注意 rc.right 是内容宽度，可能远大于可见宽度，不能直接用它定位）
+    if moe {
+        let rx = list_w.min(rc.right);
+        let badge = RECT {
+            left: rx - 44,
+            top: rc.top + 4,
+            right: rx - 6,
+            bottom: rc.top + 18,
+        };
+        unsafe {
+            let br = CreateSolidBrush(if selected { FIELD } else { ACCENT });
+            FillRect(hdc, &badge, br);
+            DeleteObject(br);
+            SetBkMode(hdc, 1);
+            SetTextColor(hdc, if selected { ACCENT } else { FIELD });
+            SelectObject(hdc, font);
+            let t = wide("MoE");
+            let mut tr = badge;
+            tr.left += 3;
+            DrawTextW(hdc, t.as_ptr(), -1, &mut tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            // 恢复正文颜色
+            SetTextColor(hdc, fg);
+        }
     }
 
     unsafe {

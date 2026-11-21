@@ -18,6 +18,40 @@ pub struct GgufInfo {
     pub name: String,
     /// 是否带分词器元数据。语言模型必有；扩散/图像模型没有
     pub has_tokenizer: bool,
+    /// 层数
+    pub block_count: u32,
+    /// 专家总数（MoE 模型 > 0）
+    pub expert_count: u32,
+    /// 每次激活的专家数
+    pub expert_used: u32,
+    /// KV 头数
+    pub n_head_kv: u32,
+    /// 注意力头数（head_count_kv 缺失时用来估算）
+    pub n_head: u32,
+    /// K/V 的维度
+    pub k_len: u32,
+    pub v_len: u32,
+    /// 每 N 层有一个全注意力层（混合 SSM 模型，0 = 没有）
+    pub full_attn_interval: u32,
+    /// 滑窗大小（0 = 没有滑窗）
+    pub sliding_window: u32,
+}
+
+impl GgufInfo {
+    /// 是否 MoE 模型
+    pub fn is_moe(&self) -> bool {
+        self.expert_count > 1
+    }
+    /// 需要为每个 token 保存完整 KV 的层数。
+    /// 混合架构（如 qwen35 的 SSM + attention）只有 1/full_attn_interval 的层需要。
+    pub fn kv_layer_count(&self) -> u32 {
+        let layers = self.block_count.max(1);
+        if self.full_attn_interval > 1 {
+            (layers + self.full_attn_interval - 1) / self.full_attn_interval
+        } else {
+            layers
+        }
+    }
 }
 
 /// 是否是「能对话/能补全」的语言模型。
@@ -96,18 +130,34 @@ pub fn read(path: &str) -> Option<GgufInfo> {
             }
             4 => {
                 let val = read_u32(&mut r)?;
-                if key.ends_with(".context_length") {
-                    info.ctx_native = val;
-                } else if key.ends_with(".rope.scaling.original_context_length") {
-                    info.ctx_original = val;
-                }
+                apply_u32_key(&mut info, &key, val);
             }
             10 => {
                 let val = read_u64(&mut r)? as u32;
-                if key.ends_with(".context_length") {
-                    info.ctx_native = val;
-                } else if key.ends_with(".rope.scaling.original_context_length") {
-                    info.ctx_original = val;
+                apply_u32_key(&mut info, &key, val);
+            }
+            9 => {
+                // 数组：head_count_kv 等可能按层存成数组，取第一个元素
+                let atype = read_u32(&mut r)?;
+                let alen = read_u64(&mut r)?;
+                if alen > 10_000_000 {
+                    return None;
+                }
+                let is_int = matches!(atype, 4 | 5 | 10 | 11);
+                let mut first: Option<u32> = None;
+                for i in 0..alen {
+                    if is_int && first.is_none() {
+                        first = Some(match atype {
+                            4 | 5 => read_u32(&mut r)?,
+                            _ => read_u64(&mut r)? as u32,
+                        });
+                    } else {
+                        skip_value(&mut r, atype)?;
+                    }
+                    let _ = i;
+                }
+                if let Some(v) = first {
+                    apply_u32_key(&mut info, &key, v);
                 }
             }
             _ => skip_value(&mut r, vtype)?,
@@ -124,6 +174,33 @@ fn read_u32<R: Read>(r: &mut R) -> Option<u32> {
     let mut b = [0u8; 4];
     r.read_exact(&mut b).ok()?;
     Some(u32::from_le_bytes(b))
+}
+
+/// 把数值型元数据按后缀填进 GgufInfo
+fn apply_u32_key(info: &mut GgufInfo, key: &str, val: u32) {
+    if key.ends_with(".context_length") {
+        info.ctx_native = val;
+    } else if key.ends_with(".rope.scaling.original_context_length") {
+        info.ctx_original = val;
+    } else if key.ends_with(".block_count") {
+        info.block_count = val;
+    } else if key.ends_with(".expert_count") {
+        info.expert_count = val;
+    } else if key.ends_with(".expert_used_count") {
+        info.expert_used = val;
+    } else if key.ends_with(".attention.head_count_kv") {
+        info.n_head_kv = val;
+    } else if key.ends_with(".attention.head_count") {
+        info.n_head = val;
+    } else if key.ends_with(".attention.key_length") {
+        info.k_len = val;
+    } else if key.ends_with(".attention.value_length") {
+        info.v_len = val;
+    } else if key.ends_with(".full_attention_interval") {
+        info.full_attn_interval = val;
+    } else if key.ends_with(".attention.sliding_window") {
+        info.sliding_window = val;
+    }
 }
 
 fn read_u64<R: Read>(r: &mut R) -> Option<u64> {

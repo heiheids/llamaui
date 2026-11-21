@@ -67,7 +67,10 @@
     "saveClose": "保存并关闭",
     "translate": "生成中文解读",
     "addDir": "添加目录…",
-    "llamaDownload": "llama 下载"
+    "llamaDownload": "llama 下载",
+    "estimate": "显存估算",
+    "applyProfile": "应用选中配置",
+    "close": "关闭"
   },
   "label": {
     "select": "选择",
@@ -96,7 +99,8 @@
     "autoParamsMore": "全部见「参数解读」，其余可用「附加命令行参数」手填",
     "autoFilter": "筛选",
     "autoMatch": "匹配",
-    "builtinDir": "程序自带"
+    "builtinDir": "程序自带",
+    "vram": "显存"
   },
   "menu": {
     "removeModel": "从模型库移除",
@@ -228,7 +232,9 @@
     "builtinDirLocked": "这是程序自带目录（相对路径），不能删除",
     "dirRemoved": "已从扫描目录移除",
     "llamaDownload": "打开 llama.cpp 的发布页，下载最新的 llama-server（Windows 版）",
-    "modelChangedWhileRunning": "已切换选中模型；服务仍在运行上一个模型，需先点「停止服务」再启动才会真正切换"
+    "modelChangedWhileRunning": "已切换选中模型；服务仍在运行上一个模型，需先点「停止服务」再启动才会真正切换",
+    "profileApplied": "已应用选中的配置，点「启动服务」生效",
+    "estimateNote": "估算值仅供参考，实际误差约 2%~10%"
   },
   "err": {
     "network": "网络错误",

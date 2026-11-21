@@ -33,6 +33,8 @@ pub struct ImportReport {
 #[derive(Clone)]
 pub struct Model {
     pub id: String,
+    /// 是否 MoE（专家混合）模型
+    pub moe: bool,
     pub name: String,
     pub path: String,
     pub size: u64,
@@ -69,6 +71,7 @@ impl Library {
                             name: o.s("name", ""),
                             size: o.i("size", 0) as u64,
                             added_at: o.i("addedAt", 0) as u64,
+                            moe: o.b("moe", false),
                             vision: o.b("vision", false),
                             unsupported: o.b("unsupported", false),
                             ctx_native: o.i("ctxNative", 0) as u32,
@@ -104,7 +107,8 @@ impl Library {
             o.set("path", Json::str(&m.path));
             o.set("size", Json::Num(m.size as f64));
             o.set("addedAt", Json::Num(m.added_at as f64));
-            o.set("vision", Json::Bool(m.vision));
+            o.set("moe", Json::Bool(m.moe));
+o.set("vision", Json::Bool(m.vision));
             o.set("unsupported", Json::Bool(m.unsupported));
             o.set("ctxNative", Json::Num(m.ctx_native as f64));
             o.set("mmproj", Json::str(&m.mmproj));
@@ -131,7 +135,8 @@ impl Library {
                 o.set("size", Json::Num(m.size as f64));
                 o.set("sizeText", Json::str(util::human_size(m.size)));
                 o.set("exists", Json::Bool(Path::new(&util::absolutize(&m.path)).is_file()));
-                o.set("vision", Json::Bool(m.vision));
+                o.set("moe", Json::Bool(m.moe));
+o.set("vision", Json::Bool(m.vision));
                 o.set("unsupported", Json::Bool(m.unsupported));
             o.set("ctxNative", Json::Num(m.ctx_native as f64));
             o.set("mmproj", Json::str(&m.mmproj));
@@ -175,13 +180,14 @@ impl Library {
             }
             let size = fs::metadata(&f).map(|m| m.len()).unwrap_or(0);
             let vision = looks_like_vision(&f);
-            let ctx_native = info.map(|i| i.ctx_native).unwrap_or(0);
+            let ctx_native = info.as_ref().map(|i| i.ctx_native).unwrap_or(0);
             // 同目录的视觉投影文件（识图模型启动时必须带上）
             let mmproj = find_mmproj(&f)
                 .map(|p| util::relativize(&p.to_string_lossy().to_string()))
                 .unwrap_or_default();
             self.items.push(Model {
                 id: make_id(&path),
+                moe: info.as_ref().map(|i| i.is_moe()).unwrap_or(false),
                 name: file_stem(&path),
                 path,
                 size,
@@ -308,6 +314,21 @@ impl Library {
             if v != m.vision {
                 m.vision = v;
                 changed = true;
+            }
+        }
+        changed
+    }
+
+    pub fn refresh_moe_flags(&mut self) -> bool {
+        let mut changed = false;
+        for m in self.items.iter_mut() {
+            let abs = util::absolutize(&m.path);
+            if let Some(info) = crate::gguf::read(&abs) {
+                let v = info.is_moe();
+                if v != m.moe {
+                    m.moe = v;
+                    changed = true;
+                }
             }
         }
         changed

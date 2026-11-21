@@ -166,6 +166,9 @@ pub struct Gui {
     pub btn_adv_browse: HWND,
     /// 「参数解读」按钮与解读窗口
     pub btn_param_help: HWND,
+    /// 「显存估算」按钮与窗口
+    pub btn_estimate: HWND,
+    pub fit_hwnd: HWND,
     pub help_hwnd: HWND,
     /// 参数解读窗口里的文本控件与「生成中文解读」按钮
     pub help_view: HWND,
@@ -231,6 +234,8 @@ pub static HWND_LOG: AtomicIsize = AtomicIsize::new(0);
 pub static MAIN_HWND: AtomicIsize = AtomicIsize::new(0);
 /// 列表项“识图模型”标记位（第 i 位对应第 i 项），供 WM_DRAWITEM 无锁读取
 pub static VISION_BITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// 列表项“MoE 模型”标记位
+pub static MOE_BITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 /// 列表项“不受支持（加载会失败）”标记位
 pub static UNSUPPORTED_BITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 /// 列表控件原本的窗口过程（子类化用）
@@ -465,7 +470,9 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                 let vision = idx < 64 && (bits >> idx) & 1 == 1;
                 let bad = idx < 64 && (UNSUPPORTED_BITS.load(Ordering::Relaxed) >> idx) & 1 == 1;
                 let font = FONT_UI.load(Ordering::Relaxed) as HFONT;
-                theme::paint_list_item(dis.hdc, dis.rc_item, &text, selected, vision, bad, font);
+                let moe = idx < 64 && (MOE_BITS.load(Ordering::Relaxed) >> idx) & 1 == 1;
+                let (lw, _lh) = client_size(dis.hwnd_item);
+                theme::paint_list_item(dis.hdc, dis.rc_item, &text, selected, vision, bad, moe, lw, font);
                 return 1;
             }
             DefWindowProcW(hwnd, msg, wp, lp)

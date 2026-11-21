@@ -88,6 +88,24 @@ pub fn on_command(g: &mut Gui, hwnd: HWND, id: usize, code: u32) {
             }
         }
 
+        ID_ESTIMATE => {
+            if code == 0 {
+                open_fit_window(g);
+            }
+        }
+        ID_FIT_APPLY => {
+            if code == 0 {
+                apply_fit_profile(g);
+            }
+        }
+        ID_FIT_CLOSE => {
+            if code == 0 && g.fit_hwnd != 0 {
+                unsafe {
+                    DestroyWindow(g.fit_hwnd);
+                }
+                g.fit_hwnd = 0;
+            }
+        }
         ID_AUTO_OPEN => {
             if code == 0 {
                 open_auto_window(g);
@@ -272,7 +290,8 @@ fn library_signature(lib: &crate::models::Library) -> String {
 
 // ---------------- 模型库 ----------------
 
-pub fn refresh_models(g: &mut Gui) {    let (items, selected) = match g.shared.lock() {
+pub fn refresh_models(g: &mut Gui) {
+    let (items, selected) = match g.shared.lock() {
         Ok(app) => (app.lib.list_json(), app.store.selected_model()),
         Err(_) => (Json::Arr(vec![]), String::new()),
     };
@@ -280,6 +299,7 @@ pub fn refresh_models(g: &mut Gui) {    let (items, selected) = match g.shared.l
     g.model_ids.clear();
     let mut vision_bits: u64 = 0;
     let mut bad_bits: u64 = 0;
+    let mut moe_bits: u64 = 0;
     let mut sel_index: Option<usize> = None;
     // 重建列表会触发一次选择通知，这期间不要把它当成“用户换模型”
     g.suppress_sel = true;
@@ -295,6 +315,9 @@ pub fn refresh_models(g: &mut Gui) {    let (items, selected) = match g.shared.l
             if m.b("unsupported", false) && i < 64 {
                 bad_bits |= 1u64 << i;
             }
+            if m.b("moe", false) && i < 64 {
+                moe_bits |= 1u64 << i;
+            }
             if id == selected {
                 sel_index = Some(i);
             }
@@ -306,6 +329,11 @@ pub fn refresh_models(g: &mut Gui) {    let (items, selected) = match g.shared.l
     }
     super::VISION_BITS.store(vision_bits, std::sync::atomic::Ordering::Relaxed);
     super::UNSUPPORTED_BITS.store(bad_bits, std::sync::atomic::Ordering::Relaxed);
+    super::MOE_BITS.store(moe_bits, std::sync::atomic::Ordering::Relaxed);
+    // 列表项在 LB_ADDSTRING 时可能已经画过一次（那时标记位还是旧的），强制重画
+    unsafe {
+        InvalidateRect(g.list, std::ptr::null(), 0);
+    }
     // 选中项仍存在就保持；不存在则回落到第一项，并在日志里说明，
     // 不再“悄悄换成默认模型”。
     let mut final_sel = selected.clone();
@@ -435,6 +463,7 @@ fn import_file(g: &mut Gui, hwnd: HWND) {
             let rep = app.lib.import_paths(&[dir.clone()]);
             let n = rep.added;
             app.lib.refresh_vision_flags();
+        app.lib.refresh_moe_flags();
             let _ = app.lib.save();
             // 导入的目录也登记进扫描列表，下次「扫描目录」还能带上它
             let mut dirs: Vec<String> = app
@@ -517,6 +546,8 @@ fn scan_dirs(g: &mut Gui) {
         }
         // 与磁盘对齐：删掉文件已消失的条目、刷新大小/视图片/上下文
         let report = app.lib.sync_with_disk();
+        // MoE 标记按 GGUF 元数据刷新（换库、换机器后自动重算）
+        app.lib.refresh_moe_flags();
         // 当前选中的模型被删了 → 清掉选择，避免启动时指向不存在的文件
         let sel = app.store.selected_model();
         if !sel.is_empty() && app.lib.find(&sel).is_none() {
@@ -1494,6 +1525,261 @@ const APP_EXTRA: &[(&str, Kind, &str, &'static [&'static str])] =
     &[("app.llamaExe", Kind::Text, "label.llamaExe", &[])];
 
 /// 打开「参数解读」窗口：把当前启动参数逐条拆开，配中英文说明
+/// 打开「显存估算」窗口：按当前机器实际显存，列出几种可选配置
+fn open_fit_window(g: &mut Gui) {
+    if g.fit_hwnd != 0 {
+        show(g.fit_hwnd, true);
+        return;
+    }
+    let title = format!("{} — {}", i18n(g, "button.estimate"), i18n(g, "app.title"));
+    let style = 0x00C0_0000 | 0x0008_0000;
+    let hwnd = create_window(super::CLASS_NAME, &title, 0, style, 200, 90, 980, 620, 0, 0);
+    if hwnd == 0 {
+        return;
+    }
+    g.fit_hwnd = hwnd;
+
+    let info_lbl = create_window(
+        "STATIC",
+        "",
+        0,
+        WS_CHILD | WS_VISIBLE | 0x0080,
+        0,
+        0,
+        10,
+        10,
+        hwnd,
+        0,
+    );
+    set_font(info_lbl, g.font);
+
+    let list = create_window(
+        "LISTBOX",
+        "",
+        0,
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | WS_BORDER | LBS_NOTIFY | LBS_HASSTRINGS,
+        0,
+        0,
+        10,
+        10,
+        hwnd,
+        ID_FIT_LIST,
+    );
+    set_font(list, g.font);
+
+    let note = create_window(
+        "STATIC",
+        "",
+        0,
+        WS_CHILD | WS_VISIBLE | 0x0080,
+        0,
+        0,
+        10,
+        10,
+        hwnd,
+        0,
+    );
+    set_font(note, g.font);
+
+    let apply = create_window(
+        "BUTTON",
+        &i18n(g, "button.applyProfile"),
+        0,
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+        0,
+        0,
+        10,
+        10,
+        hwnd,
+        ID_FIT_APPLY,
+    );
+    set_font(apply, g.font);
+    let close = create_window(
+        "BUTTON",
+        &i18n(g, "button.close"),
+        0,
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+        0,
+        0,
+        10,
+        10,
+        hwnd,
+        ID_FIT_CLOSE,
+    );
+    set_font(close, g.font);
+
+    FIT_WIN.with(|c| {
+        *c.borrow_mut() = Some(FitWin {
+            info: info_lbl,
+            list,
+            note,
+            apply,
+            close,
+        })
+    });
+
+    // 估算数据
+    let profiles = build_fit_profiles(g);
+    let (gpu_name, vram_total, vram_used) = crate::sysinfo::sample().gpu_summary();
+    {
+        let mut l = fit_state().lock().unwrap_or_else(|e| e.into_inner());
+        l.profiles = profiles;
+        l.selected = 0;
+    }
+    fill_fit_list(g);
+    position_fit_window(g, &format!("{} · {} · {:.1}/{:.1} GB", gpu_name, i18n(g, "label.vram"), vram_used, vram_total));
+    show(hwnd, true);
+}
+
+/// 组装候选配置
+fn build_fit_profiles(g: &Gui) -> Vec<crate::fit::Profile> {
+    let (path, size, ctx) = match g.shared.lock() {
+        Ok(app) => {
+            let m = app.lib.find(&g.selected_id);
+            (
+                m.map(|x| x.path.clone()).unwrap_or_default(),
+                m.map(|x| x.size).unwrap_or(0),
+                app.store.cfg.i("launch.ctxSize", 8192) as u32,
+            )
+        }
+        Err(_) => (String::new(), 0, 8192),
+    };
+    let abs = crate::util::absolutize(&path);
+    let info = crate::gguf::read(&abs).unwrap_or_default();
+    let (_, vram_total, _) = crate::sysinfo::sample().gpu_summary();
+    crate::fit::profiles(&info, size, ctx, vram_total)
+}
+
+fn fill_fit_list(g: &mut Gui) {
+    if g.fit_hwnd == 0 {
+        return;
+    }
+    let Some(ctl) = FIT_WIN.with(|c| *c.borrow()) else {
+        return;
+    };
+    let st = fit_state().lock().unwrap_or_else(|e| e.into_inner());
+    list_reset(ctl.list);
+    for p in st.profiles.iter() {
+        let mark = if p.fits { "OK" } else { " X" };
+        let kv = if p.kv_type == "f16" { "f16".to_string() } else { p.kv_type.clone() };
+        let moe = if p.n_cpu_moe > 0 {
+            format!(", --n-cpu-moe {}", p.n_cpu_moe)
+        } else {
+            String::new()
+        };
+        list_add(
+            ctl.list,
+            &format!(
+                "[{}] {:<18} -c {} -ngl {}{} -ctk {}   ~{:.1} GB",
+                mark, p.title, p.ctx, p.ngl, moe, kv, p.est.total
+            ),
+        );
+    }
+    if !st.profiles.is_empty() {
+        list_select(ctl.list, st.selected.min(st.profiles.len() - 1));
+        let p = &st.profiles[st.selected.min(st.profiles.len() - 1)];
+        set_text(ctl.note, &p.note);
+    }
+    drop(st);
+    unsafe {
+        InvalidateRect(g.fit_hwnd, std::ptr::null(), 1);
+    }
+}
+
+fn position_fit_window(g: &mut Gui, header: &str) {
+    let k = layout::scale(g.fit_hwnd);
+    let sc = |v: i32| layout::s(v, k);
+    let (cw, _ch) = client_size(g.fit_hwnd);
+    let Some(ctl) = FIT_WIN.with(|c| *c.borrow()) else {
+        return;
+    };
+    set_text(ctl.info, header);
+    move_to(ctl.info, sc(16), sc(12), sc(cw - sc(32)), sc(20));
+    move_to(ctl.list, sc(16), sc(38), sc(cw - sc(32)), sc(420));
+    move_to(ctl.note, sc(16), sc(466), sc(cw - sc(32)), sc(36));
+    move_to(ctl.apply, sc(cw - sc(300)), sc(510), sc(140), sc(34));
+    move_to(ctl.close, sc(cw - sc(150)), sc(510), sc(120), sc(34));
+}
+
+/// 应用选中的配置
+fn apply_fit_profile(g: &mut Gui) {
+    let Some(ctl) = FIT_WIN.with(|c| *c.borrow()) else {
+        return;
+    };
+    let Some(idx) = list_sel(ctl.list) else {
+        return;
+    };
+    let st = fit_state().lock().unwrap_or_else(|e| e.into_inner());
+    let Some(p) = st.profiles.get(idx).cloned() else {
+        return;
+    };
+    drop(st);
+    if let Ok(mut app) = g.shared.lock() {
+        app.store
+            .cfg
+            .set_path("launch.ctxSize", Json::Num(p.ctx as f64));
+        app.store
+            .cfg
+            .set_path("launch.nGpuLayers", Json::Num(p.ngl as f64));
+        app.store
+            .cfg
+            .set_path("cache.typeK", Json::str(&p.kv_type));
+        app.store
+            .cfg
+            .set_path("cache.typeV", Json::str(&p.kv_type));
+        app.store
+            .cfg
+            .set_path("gpu.nCpuMoe", Json::Num(p.n_cpu_moe as f64));
+        app.store
+            .cfg
+            .set_path("launch.flashAttn", Json::str(if p.flash_attn { "on" } else { "off" }));
+        let _ = app.store.save();
+        app.launcher.push_log(
+            &format!(
+                "profile applied: -c {} -ngl {} -ctk {} -ctv {}{}",
+                p.ctx,
+                p.ngl,
+                p.kv_type,
+                p.kv_type,
+                if p.n_cpu_moe > 0 {
+                    format!(" --n-cpu-moe {}", p.n_cpu_moe)
+                } else {
+                    String::new()
+                }
+            ),
+            "",
+        );
+    }
+    layout::populate(g);
+    layout::refresh_args_preview(g);
+    set_text(g.lbl_hint, &i18n(g, "hint.profileApplied"));
+}
+
+thread_local! {
+    static FIT_WIN: std::cell::RefCell<Option<FitWin>> = const { std::cell::RefCell::new(None) };
+}
+
+#[derive(Clone, Copy)]
+struct FitWin {
+    info: HWND,
+    list: HWND,
+    note: HWND,
+    apply: HWND,
+    close: HWND,
+}
+
+#[derive(Default, Clone)]
+struct FitState {
+    profiles: Vec<crate::fit::Profile>,
+    selected: usize,
+}
+
+static FIT_STATE: std::sync::OnceLock<std::sync::Mutex<FitState>> = std::sync::OnceLock::new();
+
+fn fit_state() -> &'static std::sync::Mutex<FitState> {
+    FIT_STATE.get_or_init(|| std::sync::Mutex::new(FitState::default()))
+}
+
 fn open_param_help(g: &mut Gui) {
     if g.help_hwnd != 0 {
         show(g.help_hwnd, true);

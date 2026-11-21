@@ -26,6 +26,10 @@ pub const ID_ADV_SAVE: usize = 300;
 pub const ID_ADV_CLOSE: usize = 301;
 pub const ID_ADV_BROWSE: usize = 302;
 pub const ID_PARAM_HELP: usize = 303;
+pub const ID_ESTIMATE: usize = 314;
+pub const ID_FIT_LIST: usize = 315;
+pub const ID_FIT_APPLY: usize = 316;
+pub const ID_FIT_CLOSE: usize = 317;
 pub const ID_HELP_TRANSLATE: usize = 309;
 pub const ID_AUTO_FILTER: usize = 310;
 pub const ID_SCAN_ADD: usize = 311;
@@ -276,6 +280,8 @@ pub fn build(shared: Shared, hwnd: HWND) {
         btn_adv_close: 0,
         btn_adv_browse: 0,
         btn_param_help: 0,
+        btn_estimate: 0,
+        fit_hwnd: 0,
         help_hwnd: 0,
         help_view: 0,
         btn_help_translate: 0,
@@ -386,6 +392,7 @@ pub fn build(shared: Shared, hwnd: HWND) {
         g.btn_stop = make_button(g, "", ID_STOP);
         g.lbl_args = make_label(g, "");
         g.btn_param_help = make_button(g, "", ID_PARAM_HELP);
+        g.btn_estimate = make_button(g, "", ID_ESTIMATE);
         g.args_view = create_window(
             "EDIT",
             "",
@@ -532,6 +539,7 @@ pub fn apply_language(g: &mut Gui) {
     set_text(g.lbl_network, &i18n(g, "section.network"));
     set_text(g.lbl_args, &i18n(g, "label.argsPreview"));
     set_text(g.btn_param_help, &i18n(g, "button.paramHelp"));
+    set_text(g.btn_estimate, &i18n(g, "button.estimate"));
     set_text(g.lbl_log, &i18n(g, "label.runLog"));
     set_text(g.btn_import, &i18n(g, "button.importFolder"));
     set_text(g.btn_scan, &i18n(g, "button.scan"));
@@ -637,8 +645,9 @@ pub fn position_all(g: &mut Gui) {
     move_to(g.btn_scan, w(170), h(482), w(146), h(CTL_H));
     move_to(g.btn_start, w(16), h(524), w(300), h(CTL_H));
     move_to(g.btn_stop, w(16), h(566), w(300), h(CTL_H));
-    move_to(g.lbl_args, w(16), h(608), w(190), h(18));
-    move_to(g.btn_param_help, w(212), h(602), w(104), h(26));
+    move_to(g.lbl_args, w(16), h(608), w(104), h(18));
+    move_to(g.btn_param_help, w(122), h(602), w(92), h(26));
+    move_to(g.btn_estimate, w(220), h(602), w(96), h(26));
     move_to(g.args_view, w(16), h(630), w(300), h(242));
 
     // ---- 右侧：三列网格 ----

@@ -66,7 +66,10 @@
     "saveClose": "Save and close",
     "translate": "Generate Chinese",
     "addDir": "Add folder…",
-    "llamaDownload": "Get llama"
+    "llamaDownload": "Get llama",
+    "estimate": "VRAM estimate",
+    "applyProfile": "Apply selected",
+    "close": "Close"
   },
   "label": {
     "select": "Select",
@@ -95,7 +98,8 @@
     "autoParamsMore": "full list in Explain args; others via extra CLI args",
     "autoFilter": "Filter",
     "autoMatch": "matches",
-    "builtinDir": "built-in"
+    "builtinDir": "built-in",
+    "vram": "VRAM"
   },
   "menu": {
     "removeModel": "Remove from library",
@@ -227,7 +231,9 @@
     "builtinDirLocked": "Built-in folder (relative path) cannot be removed",
     "dirRemoved": "Removed from scan list",
     "llamaDownload": "Open the llama.cpp releases page to download the latest llama-server",
-    "modelChangedWhileRunning": "Model selection changed; the server still runs the previous model. Stop the service, then start it to switch."
+    "modelChangedWhileRunning": "Model selection changed; the server still runs the previous model. Stop the service, then start it to switch.",
+    "profileApplied": "Profile applied; start the service to take effect",
+    "estimateNote": "Estimates only; actual usage differs by roughly 2-10%"
   },
   "err": {
     "network": "Network error",
