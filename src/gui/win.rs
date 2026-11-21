@@ -158,6 +158,8 @@ extern "system" {
     pub fn GetParent(hwnd: HWND) -> HWND;
     pub fn IsWindowVisible(hwnd: HWND) -> i32;
     pub fn IsWindow(hwnd: HWND) -> i32;
+    pub fn GetSystemMetrics(index: i32) -> i32;
+
     pub fn GetWindowRect(hwnd: HWND, rect: *mut RECT) -> i32;
     pub fn ScreenToClient(hwnd: HWND, pt: *mut POINT) -> i32;
     pub fn GetClassNameW(hwnd: HWND, buf: *mut u16, max: i32) -> i32;
@@ -365,6 +367,10 @@ pub const WS_CHILD: u32 = 0x4000_0000;
 pub const WS_VISIBLE: u32 = 0x1000_0000;
 pub const WS_TABSTOP: u32 = 0x0001_0000;
 pub const WS_VSCROLL: u32 = 0x0020_0000;
+/// GetWindowLong 的样式索引
+pub const GWL_STYLE: i32 = -16;
+/// 系统垂直滚动条宽度
+pub const SM_CXVSCROLL: i32 = 2;
 pub const WS_BORDER: u32 = 0x0080_0000;
 pub const WS_EX_CLIENTEDGE: u32 = 0x0000_0200;
 pub const ES_MULTILINE: u32 = 0x0004;

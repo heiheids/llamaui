@@ -56,6 +56,12 @@ pub unsafe extern "system" fn edit_wnd_proc(
         r.bottom -= layout::s(pad_bottom, k);
         r.left += layout::s(pad_x, k);
         r.right -= layout::s(2, k);
+        // 带垂直滚动条时必须把滚动条那一条留出来，
+        // 否则自绘的客户区会把系统滚动条覆盖掉（日志框就看不到滚动条）
+        if style & WS_VSCROLL != 0 {
+            let sbw = GetSystemMetrics(SM_CXVSCROLL);
+            r.right -= layout::s(sbw.max(12), k);
+        }
         if r.bottom < r.top {
             r.bottom = r.top;
         }

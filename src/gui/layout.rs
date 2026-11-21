@@ -766,7 +766,7 @@ pub fn position_all(g: &mut Gui) {
     move_to(g.lbl_log, w(X0), h(y), w(240), h(20));
     move_to(g.btn_log_clear, w(1064), h(y - 2), w(100), h(CTL_H));
     move_to(g.btn_kvmem_dl, w(956), h(y - 2), w(100), h(CTL_H));
-    move_to(g.btn_help, w(X0), h(y - 2), w(88), h(CTL_H));
+    move_to(g.btn_help, w(740), h(y - 2), w(88), h(CTL_H));
     move_to(g.btn_llama_dl, w(848), h(y - 2), w(100), h(CTL_H));
     // 顶部警示条（爆显存风险等），把日志区整体下移并缩短，给提示留出位置
     move_to(g.lbl_warn, w(X0), h(y + 22), w(1160), h(20));

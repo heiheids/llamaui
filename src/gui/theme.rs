@@ -368,13 +368,18 @@ unsafe extern "system" fn frame_cb(child: HWND, lp: LPARAM) -> i32 {
             ScreenToClient(parent, &mut c0);
             ScreenToClient(parent, &mut c1);
             let white = CreateSolidBrush(FIELD);
+            // 带垂直滚动条的控件：客户区不含滚动条，右侧那条"边条"其实就是滚动条本体，
+            // 刷白会把滚动条涂掉，所以这种情况下不画右边条。
+            let has_vscroll = (GetWindowLongPtrW(child, GWL_STYLE) as u32 & WS_VSCROLL) != 0;
             // 上、下、左、右四条边条
-            let strips = [
+            let mut strips = vec![
                 RECT { left: tl.x, top: tl.y, right: br.x, bottom: c0.y },
                 RECT { left: tl.x, top: c1.y, right: br.x, bottom: br.y },
                 RECT { left: tl.x, top: c0.y, right: c0.x, bottom: c1.y },
-                RECT { left: c1.x, top: c0.y, right: br.x, bottom: c1.y },
             ];
+            if !has_vscroll {
+                strips.push(RECT { left: c1.x, top: c0.y, right: br.x, bottom: c1.y });
+            }
             for s in strips.iter() {
                 FillRect(hdc, s, white);
             }
