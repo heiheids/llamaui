@@ -152,7 +152,8 @@
     "mmproj": "识图投影文件（mmproj）",
     "vision": "开启识图",
     "autoTranslate": "新版本自动生成中文解读",
-    "mtp": "启用 MTP 加速"
+    "mtp": "启用 MTP 加速",
+    "engine": "推理引擎"
   },
   "hint": {
     "alias": "供 API 调用的模型名，留空则使用文件路径",
@@ -236,7 +237,8 @@
     "modelChangedWhileRunning": "已切换选中模型；服务仍在运行上一个模型，需先点「停止服务」再启动才会真正切换",
     "profileApplied": "已应用选中的配置，点「启动服务」生效",
     "estimateNote": "估算值仅供参考，实际误差约 2%~10%",
-    "mtp": "模型自带 MTP（多 token 预测）层时，通过 --spec-type draft-mtp 一次预测多个 token，实测生成速度可提升 30%~40%；模型不支持时开启无效果"
+    "mtp": "模型自带 MTP（多 token 预测）层时，通过 --spec-type draft-mtp 一次预测多个 token，实测生成速度可提升 30%~40%；模型不支持时开启无效果",
+    "engine": "llama.cpp：原生引擎，兼容所有 GGUF。KVMem：把完整 KV 历史放内存/SSD，长上下文更省显存，需要单独下载 KVMem 的 llama.cpp 版包（llama-kvmem-server.exe）放进程序目录。选模型时会按权重大小自动切换（>8 GB 走 KVMem），也可在此手动覆盖。"
   },
   "err": {
     "network": "网络错误",
@@ -255,7 +257,8 @@
     "noApiKey": "当前没有可复制的密钥",
     "unknownArch": "该模型的架构 {arch} 不被当前 llama-server 支持（b12549），请更新 llama.cpp 或换用兼容的模型文件。",
     "noLlamaServer": "未发现 llama-server，请进「高级设置 → llama-server 路径」选择",
-    "tensorMismatch": "该模型与当前 llama.cpp 版本不兼容：缺少张量 {tensor}。通常是模型比 llama.cpp 新（或用了循环层等新特性），请更新 llama.cpp，或换用该版本能加载的量化文件。"
+    "tensorMismatch": "该模型与当前 llama.cpp 版本不兼容：缺少张量 {tensor}。通常是模型比 llama.cpp 新（或用了循环层等新特性），请更新 llama.cpp，或换用该版本能加载的量化文件。",
+    "kvmemNotFound": "未找到 KVMem 引擎：请把 KVMem 的 llama-kvmem-server.exe 放进程序目录，或在此处改回 llama.cpp 引擎"
   },
   "chat": {
     "title": "测试聊天",

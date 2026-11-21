@@ -138,8 +138,66 @@ impl Launcher {
         o
     }
 
-    /// 定位 llama-server 可执行文件
+    /// 当前选用的推理引擎（显示值："llama.cpp" 或 "KVMem"）
+    pub fn engine_of(cfg: &Json) -> String {
+        let e = cfg.s("launch.engine", "llama.cpp");
+        if e.trim().is_empty() {
+            "llama.cpp".to_string()
+        } else {
+            e.trim().to_string()
+        }
+    }
+
+    /// 当前是否选中 KVMem 引擎
+    pub fn is_kvmem(cfg: &Json) -> bool {
+        Self::engine_of(cfg).to_ascii_lowercase().contains("kvmem")
+    }
+
+    /// 在程序目录内自动查找 KVMem 引擎（llama-kvmem-server.exe），找不到返回空串
+    pub fn detect_kvmem_exe() -> String {
+        let names = ["llama-kvmem-server.exe", "llama-kvmem-server", "kvmem-server.exe"];
+        let base = util::base_dir();
+        let mut stack = vec![(base.clone(), 0usize)];
+        while let Some((dir, depth)) = stack.pop() {
+            if depth > 3 {
+                continue;
+            }
+            let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+            for e in rd.flatten() {
+                let path = e.path();
+                if path.is_file() {
+                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    if names.iter().any(|n| n.eq_ignore_ascii_case(name)) {
+                        return path.to_string_lossy().to_string();
+                    }
+                } else if path.is_dir() {
+                    stack.push((path, depth + 1));
+                }
+            }
+        }
+        String::new()
+    }
+
+    /// KVMem 版引擎的 exe 路径（未配置或文件不存在时返回空串）
+    pub fn kvmem_exe(cfg: &Json) -> String {
+        let p = cfg.s("app.kvmemExe", "");
+        let t = p.trim();
+        if !t.is_empty() && std::path::Path::new(t).is_file() {
+            return t.to_string();
+        }
+        String::new()
+    }
+
+    /// 定位推理引擎可执行文件（按 launch.engine 在 llama / kvmem 之间切换）
     pub fn resolve_exe(cfg: &Json) -> Result<PathBuf, String> {
+        // 选了 KVMem 引擎：必须有自己的 llama-kvmem-server.exe
+        if Self::is_kvmem(cfg) {
+            let kv = Self::kvmem_exe(cfg);
+            if !kv.is_empty() {
+                return Ok(PathBuf::from(kv));
+            }
+            return Err("err.kvmemNotFound".to_string());
+        }
         let custom = cfg.s("app.llamaExe", "");
         if !custom.trim().is_empty() {
             let p = PathBuf::from(custom.trim());

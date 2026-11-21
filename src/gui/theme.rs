@@ -30,6 +30,8 @@ pub const FRAME: u32 = 0x00F0_DAC9;
 pub const LOG_BG: u32 = 0x00FE_FAF7;
 /// 危险 / 错误色 #D64545
 pub const DANGER: u32 = 0x0045_45D6;
+/// 提醒色（橙色，用于“建议走 KVMem”的大模型标记）
+pub const WARN: u32 = 0x0015_8FE6;
 /// 成功色 #1E9E6A
 pub const OK: u32 = 0x006A_9E1E;
 
@@ -184,6 +186,7 @@ pub fn paint_list_item(
     vision: bool,
     unsupported: bool,
     moe: bool,
+    kv_big: bool,
     list_w: i32,
     font: HFONT,
 ) {
@@ -209,14 +212,15 @@ pub fn paint_list_item(
         draw_image_icon(hdc, rc.left + 7, rc.top + (rc.bottom - rc.top - 14) / 2, icon);
         tx = rc.left + 27;
     }
-    // MoE 模型单独标记：贴着列表可见区域的右边画一个小色块 + "MoE"
-    // （注意 rc.right 是内容宽度，可能远大于可见宽度，不能直接用它定位）
+    // 右侧徽标区：从右往左依次排布，正文在徽标之前截断
+    let rx = list_w.min(rc.right);
+    let mut cursor = rx - 6;
+    // MoE 徽标（贴着右边）
     if moe {
-        let rx = list_w.min(rc.right);
         let badge = RECT {
-            left: rx - 44,
+            left: cursor - 38,
             top: rc.top + 4,
-            right: rx - 6,
+            right: cursor,
             bottom: rc.top + 18,
         };
         unsafe {
@@ -230,10 +234,34 @@ pub fn paint_list_item(
             let mut tr = badge;
             tr.left += 3;
             DrawTextW(hdc, t.as_ptr(), -1, &mut tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-            // 恢复正文颜色
             SetTextColor(hdc, fg);
         }
+        cursor = badge.left - 6;
     }
+    // 大模型（>8 GB，建议走 KVMem 引擎）
+    if kv_big {
+        let badge = RECT {
+            left: cursor - 36,
+            top: rc.top + 4,
+            right: cursor,
+            bottom: rc.top + 18,
+        };
+        unsafe {
+            let br = CreateSolidBrush(if selected { FIELD } else { WARN });
+            FillRect(hdc, &badge, br);
+            DeleteObject(br);
+            SetBkMode(hdc, 1);
+            SetTextColor(hdc, if selected { WARN } else { FIELD });
+            SelectObject(hdc, font);
+            let t = wide("KV");
+            let mut tr = badge;
+            tr.left += 5;
+            DrawTextW(hdc, t.as_ptr(), -1, &mut tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            SetTextColor(hdc, fg);
+        }
+        cursor = badge.left - 6;
+    }
+    let badge_right = cursor;
 
     unsafe {
         SetBkMode(hdc, 1);
@@ -242,7 +270,7 @@ pub fn paint_list_item(
         let mut tr = RECT {
             left: tx,
             top: rc.top,
-            right: rc.right - 6,
+            right: badge_right,
             bottom: rc.bottom,
         };
         let w = wide(text);

@@ -240,6 +240,8 @@ pub static MAIN_HWND: AtomicIsize = AtomicIsize::new(0);
 pub static VISION_BITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 /// 列表项“MoE 模型”标记位
 pub static MOE_BITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// 列表项“大模型（>8 GB，建议 KVMem）”标记位
+pub static BIG_BITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 /// 列表项“不受支持（加载会失败）”标记位
 pub static UNSUPPORTED_BITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 /// 列表控件原本的窗口过程（子类化用）
@@ -476,7 +478,9 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                 let font = FONT_UI.load(Ordering::Relaxed) as HFONT;
                 let moe = idx < 64 && (MOE_BITS.load(Ordering::Relaxed) >> idx) & 1 == 1;
                 let (lw, _lh) = client_size(dis.hwnd_item);
-                theme::paint_list_item(dis.hdc, dis.rc_item, &text, selected, vision, bad, moe, lw, font);
+                let (lw, _lh) = client_size(dis.hwnd_item);
+                let big = idx < 64 && (BIG_BITS.load(Ordering::Relaxed) >> idx) & 1 == 1;
+                theme::paint_list_item(dis.hdc, dis.rc_item, &text, selected, vision, bad, moe, big, lw, font);
                 return 1;
             }
             DefWindowProcW(hwnd, msg, wp, lp)

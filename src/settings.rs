@@ -157,6 +157,8 @@ const fn flt(
 }
 
 pub const SELECT_YES_NO: &[&str] = &["auto", "on", "off"];
+/// 推理引擎：llama.cpp 原生，或 KVMem（需自带 llama-kvmem-server.exe）
+pub const SELECT_ENGINE: &[&str] = &["llama.cpp", "KVMem"];
 pub const SELECT_LOAD_MODE: &[&str] = &["auto", "none", "mmap", "mlock", "mmap+mlock"];
 pub const SELECT_SPLIT: &[&str] = &["auto", "none", "layer", "row", "tensor"];
 pub const SELECT_CACHE: &[&str] = &["f16", "f32", "bf16", "q8_0", "q5_1", "q5_0", "q4_1", "q4_0", "iq4_nl"];
@@ -172,6 +174,7 @@ pub const FIELDS: &[Field] = &[
     f("launch.mmproj", Kind::Text, "advanced", "field.mmproj", "hint.mmproj", true),
     num("launch.ctxSize", "common", "field.ctxSize", "hint.ctxSize", 0.0, 1048576.0, 256.0, false),
     num("launch.nGpuLayers", "common", "field.nGpuLayers", "hint.nGpuLayers", 0.0, 999.0, 1.0, false),
+    sel("launch.engine", "common", "field.engine", "hint.engine", SELECT_ENGINE, true),
     num("launch.threads", "common", "field.threads", "hint.threads", 0.0, 512.0, 1.0, false),
     num("launch.parallel", "common", "field.parallel", "hint.parallel", 1.0, 64.0, 1.0, false),
     sel("launch.flashAttn", "common", "field.flashAttn", "hint.flashAttn", SELECT_YES_NO, false),

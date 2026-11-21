@@ -301,6 +301,7 @@ pub fn refresh_models(g: &mut Gui) {
     let mut vision_bits: u64 = 0;
     let mut bad_bits: u64 = 0;
     let mut moe_bits: u64 = 0;
+    let mut big_bits: u64 = 0;
     let mut sel_index: Option<usize> = None;
     // 重建列表会触发一次选择通知，这期间不要把它当成“用户换模型”
     g.suppress_sel = true;
@@ -319,6 +320,10 @@ pub fn refresh_models(g: &mut Gui) {
             if m.b("moe", false) && i < 64 {
                 moe_bits |= 1u64 << i;
             }
+            // 权重 > 8 GB：建议走 KVMem 引擎，列表里给个 KV 标记
+            if m.i("size", 0) > 8_000_000_000 && i < 64 {
+                big_bits |= 1u64 << i;
+            }
             if id == selected {
                 sel_index = Some(i);
             }
@@ -331,6 +336,7 @@ pub fn refresh_models(g: &mut Gui) {
     super::VISION_BITS.store(vision_bits, std::sync::atomic::Ordering::Relaxed);
     super::UNSUPPORTED_BITS.store(bad_bits, std::sync::atomic::Ordering::Relaxed);
     super::MOE_BITS.store(moe_bits, std::sync::atomic::Ordering::Relaxed);
+    super::BIG_BITS.store(big_bits, std::sync::atomic::Ordering::Relaxed);
     // 列表项在 LB_ADDSTRING 时可能已经画过一次（那时标记位还是旧的），强制重画
     unsafe {
         InvalidateRect(g.list, std::ptr::null(), 0);
@@ -626,6 +632,11 @@ fn select_from_list(g: &mut Gui) {
         }
     }
     g.selected_id = id;
+    // 服务未运行时，按模型权重大小自动匹配引擎（>8 GB → KVMem，小模型留 llama.cpp）
+    // 用户仍可在「引擎」下拉里手动覆盖
+    if !was_running {
+        auto_pick_engine(g);
+    }
     sync_mmproj(g);
     layout::refresh_args_preview(g);
     refresh_status(g);
@@ -1558,6 +1569,73 @@ fn check_vram_risk(g: &mut Gui) {
         set_text(g.lbl_warn, "");
         g.vram_warned = false;
     }
+}
+
+/// 按模型权重自动挑选引擎：> 8 GB 走 KVMem，其余保持 llama.cpp。
+/// KVMem 引擎未安装时保持 llama.cpp 并在日志说明，避免“点了起不来”。
+fn auto_pick_engine(g: &mut Gui) {
+    const BIG_MODEL_GB: f64 = 8.0;
+    let (size, name) = match g.shared.lock() {
+        Ok(app) => app
+            .lib
+            .find(&g.selected_id)
+            .map(|m| (m.size, m.name.clone()))
+            .unwrap_or((0, String::new())),
+        Err(_) => return,
+    };
+    let gb = size as f64 / 1e9;
+    let want_kvmem = gb > BIG_MODEL_GB;
+    let mut app = match g.shared.lock() {
+        Ok(a) => a,
+        Err(_) => return,
+    };
+    // 没探测到 KVMem 就把路径补上
+    if crate::process::Launcher::kvmem_exe(&app.store.cfg).is_empty() {
+        let found = crate::process::Launcher::detect_kvmem_exe();
+        if !found.is_empty() {
+            app.store.cfg.set_path("app.kvmemExe", Json::str(&found));
+            let _ = app.store.save();
+        }
+    }
+    let have_kvmem = !crate::process::Launcher::kvmem_exe(&app.store.cfg).is_empty();
+    let current = crate::process::Launcher::is_kvmem(&app.store.cfg);
+    // 想要 KVMem 但本机没有：保持 llama.cpp，并提示一次
+    if want_kvmem && !have_kvmem {
+        if !app.store.cfg.b("app.kvmemNoticeShown", false) {
+            app.store
+                .cfg
+                .set_path("app.kvmemNoticeShown", Json::Bool(true));
+            let _ = app.store.save();
+            app.launcher.push_log(
+                &format!(
+                    "{} is {:.1} GB: KVMem engine not installed, keeping llama.cpp \
+                     (put llama-kvmem-server.exe in the app folder to enable it)",
+                    name, gb
+                ),
+                "",
+            );
+        }
+        return;
+    }
+    let target = want_kvmem && have_kvmem;
+    if target == current {
+        return;
+    }
+    app.store
+        .cfg
+        .set_path("launch.engine", Json::str(if target { "KVMem" } else { "llama.cpp" }));
+    let _ = app.store.save();
+    app.launcher.push_log(
+        &format!(
+            "engine switched to {} for {} ({:.1} GB)",
+            if target { "KVMem" } else { "llama.cpp" },
+            name,
+            gb
+        ),
+        "",
+    );
+    drop(app);
+    layout::populate(g);
 }
 
 /// 打开「显存估算」窗口：按当前机器实际显存，列出几种可选配置

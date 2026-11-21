@@ -465,7 +465,9 @@ pub fn build(shared: Shared, hwnd: HWND) {
 pub fn populate(g: &mut Gui) {
     let c = cfg(g);
     for ctl in g.fields.iter() {
-        let Some(v) = c.path(ctl.key) else { continue };
+        // 配置里还没有这个键时按“空值”处理，让下拉/勾选框也能显示默认项
+        let empty = crate::json::Json::str("");
+        let v = c.path(ctl.key).unwrap_or(&empty);
         match ctl.kind {
             Kind::Bool => check_set(ctl.hwnd, v.as_bool().unwrap_or(false)),
             Kind::Select => {
@@ -474,6 +476,15 @@ pub fn populate(g: &mut Gui) {
                 for (i, opt) in ctl.options.iter().enumerate() {
                     if *opt == cur {
                         idx = i;
+                    }
+                }
+                // 未设置过（如新增的 launch.engine）时落到第一项并写回配置
+                if cur.is_empty() {
+                    if let Some(first) = ctl.options.first() {
+                        let f = first.to_string();
+                        if let Ok(mut app) = g.shared.lock() {
+                            app.store.cfg.set_path(ctl.key, crate::json::Json::str(&f));
+                        }
                     }
                 }
                 combo_select(ctl.hwnd, idx);
