@@ -243,6 +243,15 @@ extern "system" {
     ) -> isize;
 }
 
+/// 用系统默认程序打开 URL 或文件
+pub fn open_url(url: &str) {
+    let op = wide("open");
+    let u = wide(url);
+    unsafe {
+        ShellExecuteW(0, op.as_ptr(), u.as_ptr(), std::ptr::null(), std::ptr::null(), 1);
+    }
+}
+
 /// 在资源管理器里定位并选中某个文件（文件不存在则打开其所在目录）
 pub fn reveal_in_explorer(path: &str) {
     let p = std::path::Path::new(path);

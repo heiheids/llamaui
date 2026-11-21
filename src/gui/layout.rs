@@ -21,6 +21,7 @@ pub const ID_LANG: usize = 110;
 pub const ID_COPY_EP: usize = 111;
 pub const ID_COPY_KEY: usize = 112;
 pub const ID_LOG_CLEAR: usize = 400;
+pub const ID_LLAMA_DL: usize = 401;
 pub const ID_ADV_SAVE: usize = 300;
 pub const ID_ADV_CLOSE: usize = 301;
 pub const ID_ADV_BROWSE: usize = 302;
@@ -289,6 +290,7 @@ pub fn build(shared: Shared, hwnd: HWND) {
         auto_filter: String::new(),
         log_edit: 0,
         btn_log_clear: 0,
+        btn_llama_dl: 0,
         tip: 0,
         hover_wnd: 0,
         model_rect: RECT::default(),
@@ -424,6 +426,7 @@ pub fn build(shared: Shared, hwnd: HWND) {
         // 右下角运行日志
         g.lbl_log = make_label(g, "");
         g.btn_log_clear = make_button(g, "", ID_LOG_CLEAR);
+        g.btn_llama_dl = make_button(g, "", ID_LLAMA_DL);
         g.log_edit = create_window(
             "EDIT",
             "",
@@ -541,6 +544,7 @@ pub fn apply_language(g: &mut Gui) {
     set_text(g.btn_copy_ep, &i18n(g, "button.copy"));
     set_text(g.btn_copy_key, &i18n(g, "button.copy"));
     set_text(g.btn_log_clear, &i18n(g, "button.clearLog"));
+    set_text(g.btn_llama_dl, &i18n(g, "button.llamaDownload"));
     set_text(g.st_cpu, &i18n(g, "status.cpuNone"));
     set_text(g.st_ram, &i18n(g, "status.ramNone"));
     set_text(g.st_gpu, &i18n(g, "status.gpuNone"));
@@ -717,6 +721,7 @@ pub fn position_all(g: &mut Gui) {
     // ---- 右下角运行日志（标签在框外，避免标签底色盖住边框）----
     move_to(g.lbl_log, w(X0), h(y), w(240), h(20));
     move_to(g.btn_log_clear, w(1064), h(y - 2), w(100), h(CTL_H));
+    move_to(g.btn_llama_dl, w(956), h(y - 2), w(100), h(CTL_H));
     let log_top = y + 34;
     let log_h = 872 - log_top;
     move_to(g.log_edit, w(X0), h(log_top), w(828), h(log_h.max(80)));

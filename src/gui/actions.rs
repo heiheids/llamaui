@@ -180,6 +180,11 @@ pub fn on_command(g: &mut Gui, hwnd: HWND, id: usize, code: u32) {
                 set_text(g.log_edit, "");
             }
         }
+        ID_LLAMA_DL => {
+            if code == 0 {
+                open_url("https://github.com/ggml-org/llama.cpp/releases");
+            }
+        }
         layout::ID_CTX_REMOVE => {
             if code == 0 {
                 remove_selected(g);
@@ -551,6 +556,7 @@ fn select_from_list(g: &mut Gui) {
     let mut name = String::new();
     let mut was_running = false;
     let mut changed = false;
+    let mut warn = String::new();
     if let Ok(mut app) = g.shared.lock() {
         changed = prev != id || app.store.selected_model() != id;
         app.store.set_selected(&id);
@@ -561,11 +567,18 @@ fn select_from_list(g: &mut Gui) {
             app.launcher
                 .push_log(&format!("model selected: {}", name), "");
         }
-        // 真的换了模型且服务正在运行，才停掉，避免“界面显示新模型、实际还在跑旧模型”
+        // 切换模型**不**自动停服：正在运行的模型保持不变，
+        // 需要用户手动点「停止服务」，避免误操作打断正在进行的对话/任务
         if was_running && changed {
-            app.launcher.stop();
-            app.launcher
-                .push_log("service stopped because the model changed", "");
+            let running = app
+                .launcher
+                .status_json(&app.store.cfg)
+                .s("argsPreview", "");
+            app.launcher.push_log(
+                "service keeps running the previous model; press Stop service to switch",
+                "",
+            );
+            warn = running;
         }
     }
     g.selected_id = id;
@@ -573,6 +586,10 @@ fn select_from_list(g: &mut Gui) {
     layout::refresh_args_preview(g);
     refresh_status(g);
     show_ctx_hint(g);
+    if !warn.is_empty() {
+        let msg = i18n(g, "hint.modelChangedWhileRunning");
+        set_text(g.lbl_hint, &msg);
+    }
 }
 
 /// 选模型后同步“识图”相关配置：

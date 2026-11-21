@@ -188,6 +188,8 @@ pub struct Gui {
 
     pub log_edit: HWND,
     pub btn_log_clear: HWND,
+    /// 「llama 下载」按钮：打开 llama.cpp releases 页面
+    pub btn_llama_dl: HWND,
     pub tip: HWND,
     /// 悬停提示窗（如“不支持加载该模型”）
     pub hover_wnd: HWND,

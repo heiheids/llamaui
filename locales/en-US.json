@@ -65,7 +65,8 @@
     "autoSettings": "Configure…",
     "saveClose": "Save and close",
     "translate": "Generate Chinese",
-    "addDir": "Add folder…"
+    "addDir": "Add folder…",
+    "llamaDownload": "Get llama"
   },
   "label": {
     "select": "Select",
@@ -224,7 +225,9 @@
     "autoFilter": "Type to filter parameter names, e.g. cors or template",
     "autoTranslating": "Server idle; generating Chinese descriptions",
     "builtinDirLocked": "Built-in folder (relative path) cannot be removed",
-    "dirRemoved": "Removed from scan list"
+    "dirRemoved": "Removed from scan list",
+    "llamaDownload": "Open the llama.cpp releases page to download the latest llama-server",
+    "modelChangedWhileRunning": "Model selection changed; the server still runs the previous model. Stop the service, then start it to switch."
   },
   "err": {
     "network": "Network error",

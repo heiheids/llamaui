@@ -66,7 +66,8 @@
     "autoSettings": "设置…",
     "saveClose": "保存并关闭",
     "translate": "生成中文解读",
-    "addDir": "添加目录…"
+    "addDir": "添加目录…",
+    "llamaDownload": "llama 下载"
   },
   "label": {
     "select": "选择",
@@ -225,7 +226,9 @@
     "autoFilter": "输入关键字过滤参数名，例如 cors 或 template",
     "autoTranslating": "服务空闲，正在自动生成中文解读",
     "builtinDirLocked": "这是程序自带目录（相对路径），不能删除",
-    "dirRemoved": "已从扫描目录移除"
+    "dirRemoved": "已从扫描目录移除",
+    "llamaDownload": "打开 llama.cpp 的发布页，下载最新的 llama-server（Windows 版）",
+    "modelChangedWhileRunning": "已切换选中模型；服务仍在运行上一个模型，需先点「停止服务」再启动才会真正切换"
   },
   "err": {
     "network": "网络错误",
