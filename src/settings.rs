@@ -176,6 +176,7 @@ pub const FIELDS: &[Field] = &[
     num("launch.parallel", "common", "field.parallel", "hint.parallel", 1.0, 64.0, 1.0, false),
     sel("launch.flashAttn", "common", "field.flashAttn", "hint.flashAttn", SELECT_YES_NO, false),
     f("launch.jinja", Kind::Bool, "common", "field.jinja", "hint.jinja", false),
+    f("launch.mtp", Kind::Bool, "common", "field.mtp", "hint.mtp", false),
     // ---------- 常用：网络 / API ----------
     f("network.lanOpen", Kind::Bool, "network", "field.lanOpen", "hint.lanOpen", false),
     f("network.host", Kind::Text, "network", "field.host", "hint.host", false),
@@ -402,6 +403,11 @@ pub fn build_args(cfg: &Json, model_path: &str) -> Vec<String> {
         a.push("--jinja".into());
     } else {
         a.push("--no-jinja".into());
+    }
+    // MTP（多 token 预测）：模型自带 NextN 层时启用，能明显提升生成速度
+    if cfg.b("launch.mtp", false) {
+        a.push("--spec-type".into());
+        a.push("draft-mtp".into());
     }
 
     push_num(&mut a, "-b", cfg, "launch.batchSize", 2048.0);

@@ -35,6 +35,8 @@ pub struct GgufInfo {
     pub full_attn_interval: u32,
     /// 滑窗大小（0 = 没有滑窗）
     pub sliding_window: u32,
+    /// 内置 MTP（多 token 预测）层数，0 = 不支持
+    pub nextn_layers: u32,
 }
 
 impl GgufInfo {
@@ -198,6 +200,8 @@ fn apply_u32_key(info: &mut GgufInfo, key: &str, val: u32) {
         info.v_len = val;
     } else if key.ends_with(".full_attention_interval") {
         info.full_attn_interval = val;
+    } else if key.ends_with(".nextn_predict_layers") {
+        info.nextn_layers = val;
     } else if key.ends_with(".attention.sliding_window") {
         info.sliding_window = val;
     }

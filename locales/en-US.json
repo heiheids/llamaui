@@ -150,7 +150,8 @@
     "extraArgs": "Extra CLI arguments",
     "mmproj": "Vision projector (mmproj)",
     "vision": "Enable vision",
-    "autoTranslate": "Auto-translate docs on new version"
+    "autoTranslate": "Auto-translate docs on new version",
+    "mtp": "Enable MTP"
   },
   "hint": {
     "alias": "Model name used by the API; empty means the file path",
@@ -233,7 +234,8 @@
     "llamaDownload": "Open the llama.cpp releases page to download the latest llama-server",
     "modelChangedWhileRunning": "Model selection changed; the server still runs the previous model. Stop the service, then start it to switch.",
     "profileApplied": "Profile applied; start the service to take effect",
-    "estimateNote": "Estimates only; actual usage differs by roughly 2-10%"
+    "estimateNote": "Estimates only; actual usage differs by roughly 2-10%",
+    "mtp": "When the model ships MTP (multi-token prediction) layers, --spec-type draft-mtp predicts several tokens at once; measured 30-40% faster generation. No effect if the model has no MTP layers."
   },
   "err": {
     "network": "Network error",
