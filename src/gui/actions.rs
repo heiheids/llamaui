@@ -1420,15 +1420,12 @@ fn append_logs(g: &mut Gui) {
         SendMessageW(g.log_edit, EM_SCROLLCARET, 0, 0);
     }
 
-    // 从 llama-server 的计时日志里累加本轮 token 用量
+    // 从引擎日志里累加本轮 token 用量
     let (mut tp, mut tg) = (0u64, 0u64);
     for line in lines.iter() {
-        if let Some((is_prompt, n)) = parse_token_line(line) {
-            if is_prompt {
-                tp += n;
-            } else {
-                tg += n;
-            }
+        if let Some((p, g)) = parse_token_line(line) {
+            tp += p;
+            tg += g;
         }
     }
     if tp > 0 || tg > 0 {
@@ -1527,9 +1524,22 @@ fn human_tokens(n: u64) -> String {
     }
 }
 
-/// 从 llama-server 的计时日志里提取一次请求的 token 数
-/// 形如：`prompt eval time = 13027.36 ms / 21483 tokens (...)` 或 `eval time = ... / 132 tokens`
-fn parse_token_line(line: &str) -> Option<(bool, u64)> {
+/// 从引擎日志里提取一次请求的 token 数，返回 (prompt, gen)。
+///
+/// llama.cpp / KVMem 用计时行：
+///   `prompt eval time =  146.88 ms /    30 tokens (...)`  → (30, 0)
+///   `       eval time =  125.45 ms /     8 tokens (...)`  → (0, 8)
+/// NInfer（ninfer-kvmem-server）不打计时行，只在请求结束时汇总一行：
+///   `req#1 done | openai-chat | output limit | prompt 54 | output 16 | ...`
+///                                                                  → (54, 16)
+fn parse_token_line(line: &str) -> Option<(u64, u64)> {
+    // NInfer：必须是 “done” 那行，避免和 “started” 行里的 max output 重复计数
+    if line.contains("req#") && line.contains(" done |") {
+        let p = digits_after(line, "prompt ")?;
+        let g = digits_after(line, "output ")?;
+        return if p == 0 && g == 0 { None } else { Some((p, g)) };
+    }
+    // llama.cpp / KVMem
     let is_prompt = line.contains("prompt eval time");
     if !is_prompt && !line.contains("eval time =") {
         return None;
@@ -1545,7 +1555,26 @@ fn parse_token_line(line: &str) -> Option<(bool, u64)> {
     if n == 0 {
         return None;
     }
-    Some((is_prompt, n))
+    Some(if is_prompt { (n, 0) } else { (0, n) })
+}
+
+/// 取 `key` 后面紧跟的数字；同一行里 key 可能先出现在不跟数字的地方
+/// （例如 `output limit` 之于 `output 16`），所以逐个出现位置往后试。
+fn digits_after(line: &str, key: &str) -> Option<u64> {
+    let mut from = 0usize;
+    while let Some(rel) = line[from..].find(key) {
+        let pos = from + rel + key.len();
+        let digits: String = line[pos..]
+            .chars()
+            .skip_while(|c| *c == ' ')
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        if let Ok(v) = digits.parse::<u64>() {
+            return Some(v);
+        }
+        from = pos;
+    }
+    None
 }
 
 /// 从日志行里提取 "unknown model architecture: 'xxx'" 的架构名
