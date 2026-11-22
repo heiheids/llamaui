@@ -769,7 +769,8 @@ pub fn position_all(g: &mut Gui) {
     move_to(g.btn_help, w(740), h(y - 2), w(88), h(CTL_H));
     move_to(g.btn_llama_dl, w(848), h(y - 2), w(100), h(CTL_H));
     // 顶部警示条（爆显存风险等），把日志区整体下移并缩短，给提示留出位置
-    move_to(g.lbl_warn, w(X0), h(y + 22), w(1160), h(20));
+    // 放在按钮行下方（按钮结束于 y+28），否则这条 1160 宽的标签会盖住按钮底部几行
+    move_to(g.lbl_warn, w(X0), h(y + 30), w(1160), h(18));
     let log_top = y + 50;
     let log_h = 872 - log_top;
     move_to(g.log_edit, w(X0), h(log_top), w(828), h(log_h.max(80)));

@@ -319,7 +319,7 @@ fn create_main_window() -> HWND {
     let brush = unsafe { CreateSolidBrush(theme::BG) };
     register_window_class(CLASS_NAME, wnd_proc, brush);
     // WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME
-    let style = 0x00C0_0000 | 0x0008_0000 | 0x0002_0000 | 0x0001_0000 | 0x0004_0000;
+    let style = 0x00C0_0000 | 0x0008_0000 | 0x0002_0000 | 0x0001_0000 | 0x0004_0000 | 0x0200_0000;
     let title = crate::i18n::t(&crate::util::detect_system_lang(), "app.title");
     // 1196x927 → 客户区 1180x888，正好容纳 layout 设计稿
     let hwnd = create_window(CLASS_NAME, &title, 0, style, 60, 30, 1196, 927, 0, 0);
@@ -354,6 +354,14 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                 let hdc = unsafe {
                     BeginPaint(hwnd, &mut ps as *mut PAINTSTRUCT as *mut std::ffi::c_void)
                 };
+                // 先把这次需要重绘的区域整块刷成背景色。
+                // 父窗口本身只画“当前模型”那一行，其它区域靠这里兜底；
+                // 少了这一步，控件移动/缩窄后留下的旧像素会一直残留在界面上。
+                unsafe {
+                    let br = CreateSolidBrush(theme::BG);
+                    FillRect(hdc, &ps.rc_paint, br);
+                    DeleteObject(br);
+                }
                 with_gui(|g| {
                     let font = FONT_UI.load(Ordering::Relaxed) as HFONT;
                     theme::paint_model_line(hdc, g.model_rect, &g.model_text, g.marquee_off, font);
