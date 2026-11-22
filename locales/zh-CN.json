@@ -120,6 +120,7 @@
   "field": {
     "alias": "模型别名",
     "ctxSize": "上下文长度 (tokens)",
+    "ctxAuto": "上下文跟随模型",
     "nGpuLayers": "GPU 层数",
     "threads": "CPU 线程数",
     "parallel": "并发槽位",
@@ -169,6 +170,7 @@
   "hint": {
     "alias": "供 API 调用的模型名，留空则使用文件路径",
     "ctxSize": "0 表示由模型元数据自动决定；越大越吃显存",
+    "ctxAuto": "勾选后切换模型时自动改成该模型的原生上下文上限",
     "nGpuLayers": "99 表示尽可能全部放入显存",
     "threads": "0 表示自动",
     "parallel": "同时处理的请求数，配合智能体并发调用",

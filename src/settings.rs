@@ -173,6 +173,8 @@ pub const FIELDS: &[Field] = &[
     bool_field("launch.vision", "common", "field.vision", "hint.vision", false),
     f("launch.mmproj", Kind::Text, "advanced", "field.mmproj", "hint.mmproj", true),
     num("launch.ctxSize", "common", "field.ctxSize", "hint.ctxSize", 0.0, 1048576.0, 256.0, false),
+    // 勾上后「上下文长度」始终跟随所选模型的原生上限，切换模型时自动改写
+    bool_field("app.ctxAuto", "common", "field.ctxAuto", "hint.ctxAuto", false),
     num("launch.nGpuLayers", "common", "field.nGpuLayers", "hint.nGpuLayers", 0.0, 999.0, 1.0, false),
     sel("launch.engine", "common", "field.engine", "hint.engine", SELECT_ENGINE, true),
     num("launch.threads", "common", "field.threads", "hint.threads", 0.0, 512.0, 1.0, false),

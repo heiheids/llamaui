@@ -119,6 +119,7 @@
   "field": {
     "alias": "Model alias",
     "ctxSize": "Context size (tokens)",
+    "ctxAuto": "Context follows model",
     "nGpuLayers": "GPU layers",
     "threads": "CPU threads",
     "parallel": "Parallel slots",
@@ -168,6 +169,7 @@
   "hint": {
     "alias": "Model name used by the API; empty means the file path",
     "ctxSize": "0 = derived from model metadata; larger uses more VRAM",
+    "ctxAuto": "When checked, switching models resets the context to that model's native maximum",
     "nGpuLayers": "99 means offload as many layers as possible",
     "threads": "0 = auto",
     "parallel": "Concurrent requests; raise for parallel agents",

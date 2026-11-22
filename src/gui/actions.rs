@@ -708,20 +708,41 @@ pub fn sync_mmproj(g: &mut Gui) {
 
     // ---- 上下文自动填充 ----
     if app.store.cfg.b("app.ctxAuto", true) && native > 0 {
+        let want = auto_ctx_for(native);
         let cur = app.store.cfg.i("launch.ctxSize", 0);
-        if cur != native as i64 {
-            app.store.cfg.set_path("launch.ctxSize", Json::Num(native as f64));
+        if cur != want as i64 {
+            app.store.cfg.set_path("launch.ctxSize", Json::Num(want as f64));
             let _ = app.store.save();
-            app.launcher.push_log(
-                &format!("context size auto-set to {} (model max)", native),
-                "",
-            );
+            if want == native {
+                app.launcher.push_log(
+                    &format!("context size auto-set to {} (model max)", native),
+                    "",
+                );
+            } else {
+                app.launcher.push_log(
+                    &format!(
+                        "context size auto-set to {} (model max {} exceeds the {} cap)",
+                        want, native, AUTO_CTX_MAX
+                    ),
+                    "",
+                );
+            }
         }
         if let Some(ctl) = g.fields.iter().find(|c| c.key == "launch.ctxSize") {
-            set_text(ctl.hwnd, &native.to_string());
+            set_text(ctl.hwnd, &want.to_string());
         }
         let _ = name;
     }
+}
+
+/// 自动跟随模型时的上下文长度上限。
+/// 有些模型标称 1M 上下文，照搬会直接吃光显存，这里封顶到 256k；
+/// 需要更长就取消勾选「上下文跟随模型」自己填。
+const AUTO_CTX_MAX: u32 = 262144;
+
+/// 跟随模型时应使用的上下文：取原生值，但不超过 AUTO_CTX_MAX
+fn auto_ctx_for(native: u32) -> u32 {
+    native.min(AUTO_CTX_MAX)
 }
 
 /// 提示当前模型的原生上下文，并在设置过小时给出建议
@@ -949,12 +970,28 @@ fn collect_patch(g: &Gui) -> Json {
 }
 
 fn save_config(g: &mut Gui, hwnd: HWND) {
-    let patch = collect_patch(g);
-    // 用户是否手改过上下文长度：改过就在本次保存后退出“自动跟随模型上限”
-    let typed_ctx = patch
-        .path("launch.ctxSize")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
+    let mut patch = collect_patch(g);
+    // 「上下文跟随模型」勾上时，不管用户填了什么，一律写回所选模型的原生上限。
+    // 关掉时尊重用户手填的值。
+    let auto = patch
+        .path("app.ctxAuto")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if auto {
+        if let Ok(app) = g.shared.lock() {
+            let native = app
+                .lib
+                .find(&app.store.selected_model())
+                .map(|m| m.ctx_native)
+                .unwrap_or(0);
+            if native > 0 {
+                patch.set_path(
+                    "launch.ctxSize",
+                    crate::json::Json::Num(auto_ctx_for(native) as f64),
+                );
+            }
+        }
+    }
     let result = match g.shared.lock() {
         Ok(mut app) => match app.store.merge_update(&patch) {
             Ok(_) => {
@@ -963,7 +1000,10 @@ fn save_config(g: &mut Gui, hwnd: HWND) {
                     .find(&app.store.selected_model())
                     .map(|m| m.ctx_native)
                     .unwrap_or(0);
-                let auto = native > 0 && typed_ctx == native as i64;
+                let auto = patch
+                    .path("app.ctxAuto")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 app.store.cfg.set_path("app.ctxAuto", Json::Bool(auto));
                 match app.store.save() {
                     Ok(_) => {
@@ -979,6 +1019,12 @@ fn save_config(g: &mut Gui, hwnd: HWND) {
     };
     match result {
         Ok(c) => {
+            // 跟随模式把界面上的上下文长度同步成实际生效值
+            if c.b("app.ctxAuto", false) {
+                if let Some(ctl) = g.fields.iter().find(|f| f.key == "launch.ctxSize") {
+                    set_text(ctl.hwnd, &c.i("launch.ctxSize", 0).to_string());
+                }
+            }
             set_text(g.lbl_hint, &format!("✓ {}", i18n(g, "button.save")));
             if crate::i18n::resolve(&c) != g.lang {
                 layout::apply_language(g);
