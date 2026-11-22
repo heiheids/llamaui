@@ -164,6 +164,8 @@ pub const SELECT_SPLIT: &[&str] = &["auto", "none", "layer", "row", "tensor"];
 pub const SELECT_CACHE: &[&str] = &["f16", "f32", "bf16", "q8_0", "q5_1", "q5_0", "q4_1", "q4_0", "iq4_nl"];
 pub const SELECT_REASONING: &[&str] = &["auto", "on", "off"];
 pub const SELECT_NUMA: &[&str] = &["auto", "distribute", "isolate", "numactl"];
+/// RoPE 频率缩放方式（llama.cpp 的 --rope-scaling 取值）
+pub const SELECT_ROPE: &[&str] = &["auto", "none", "linear", "yarn"];
 
 
 /// 全部设置字段（顺序即界面顺序）
@@ -226,6 +228,10 @@ pub const FIELDS: &[Field] = &[
     // 输出上限（tokens）：0 = 自动。思考型模型自动给一个宽裕值，
     // 否则它可能把预算全花在思考上，返回空答案
     num("adv.maxOutput", "advanced", "field.maxOutput", "hint.maxOutput", 0.0, 262144.0, 1024.0, true),
+    // RoPE 缩放：把上下文扩到原生之上时，用它代替「裸外推」
+    sel("adv.ropeScaling", "advanced", "field.ropeScaling", "hint.ropeScaling", SELECT_ROPE, true),
+    num("adv.ropeScale", "advanced", "field.ropeScale", "hint.ropeScale", 0.0, 64.0, 0.5, true),
+    num("adv.yarnOrigCtx", "advanced", "field.yarnOrigCtx", "hint.yarnOrigCtx", 0.0, 1048576.0, 1024.0, true),
     f("adv.chatTemplateFile", Kind::Text, "advanced", "field.chatTemplateFile", "hint.chatTemplateFile", true),
     num("adv.prio", "advanced", "field.prio", "hint.prio", -1.0, 3.0, 1.0, true),
     sel("adv.numa", "advanced", "field.numa", "hint.numa", SELECT_NUMA, true),
@@ -285,6 +291,9 @@ pub fn defaults() -> Json {
     c.set_path("adv.reasoningBudget", Json::Num(-1.0));
     // 0 = 自动：思考型模型给宽裕的输出上限，普通模型不干预
     c.set_path("adv.maxOutput", Json::Num(0.0));
+    c.set_path("adv.ropeScaling", Json::str("auto"));
+    c.set_path("adv.ropeScale", Json::Num(0.0));
+    c.set_path("adv.yarnOrigCtx", Json::Num(0.0));
     c.set_path("adv.chatTemplateFile", Json::str(""));
     c.set_path("adv.prio", Json::Num(0.0));
     c.set_path("adv.numa", Json::str("auto"));
@@ -608,8 +617,49 @@ pub fn build_args(cfg: &Json, model_path: &str) -> Vec<String> {
         }
     };
     push_opt(&mut a, "--alias", &alias);
+    let ctx_want = cfg.i("launch.ctxSize", 4096);
     a.push("-c".into());
-    a.push(cfg.i("launch.ctxSize", 4096).to_string());
+    a.push(ctx_want.to_string());
+
+    // ---- RoPE 缩放 ----
+    // 把上下文开到模型原生上限之上时，裸外推会让质量明显变差；
+    // 这里可以直接选 linear / yarn 让 llama.cpp 做频率缩放。
+    // 倍率留 0 就按「目标上下文 ÷ 原生上下文」自动算。
+    let rope = cfg.s("adv.ropeScaling", "auto");
+    if rope != "auto" {
+        let native = if model_path == "<model>" {
+            0u32
+        } else {
+            crate::gguf::read(model_path)
+                .map(|i| i.ctx_native)
+                .unwrap_or(0)
+        };
+        a.push("--rope-scaling".into());
+        a.push(rope.clone());
+        if rope != "none" {
+            let mut factor = cfg
+                .path("adv.ropeScale")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+            if factor <= 0.0 && native > 0 && ctx_want > native as i64 {
+                factor = ctx_want as f64 / native as f64;
+            }
+            if factor > 0.0 {
+                a.push("--rope-scale".into());
+                a.push(format!("{:.3}", factor));
+            }
+            // YaRN 需要知道模型原始训练上下文；0 = 用模型自己的。
+            // 只有 yarn 才需要这个参数，linear 传了没意义
+            if rope == "yarn" {
+                let orig = cfg.i("adv.yarnOrigCtx", 0);
+                let orig = if orig > 0 { orig } else { native as i64 };
+                if orig > 0 {
+                    a.push("--yarn-orig-ctx".into());
+                    a.push(orig.to_string());
+                }
+            }
+        }
+    }
     a.push("-ngl".into());
     a.push(cfg.i("launch.nGpuLayers", 99).to_string());
     push_num(&mut a, "-t", cfg, "launch.threads", 0.0);
