@@ -2800,9 +2800,14 @@ fn position_auto_window(g: &mut Gui) {
         let row = (i / 3) as i32;
         let cx = x0 + col * (col_w + 10);
         let cyy = 84 + row * row_h;
-        move_to(ac.label, sc(cx), sc(cyy), sc(col_w - 10), sc(17));
-        let h = if ac.kind == Kind::Bool { 24 } else { 26 };
-        move_to(ac.hwnd, sc(cx), sc(cyy + 19), sc(col_w - 20), sc(h));
+        // 勾选项和高级设置窗口保持一致：方框在前、文字在后，同一行
+        if ac.kind == Kind::Bool {
+            move_to(ac.hwnd, sc(cx), sc(cyy + 2), sc(24), sc(24));
+            move_to(ac.label, sc(cx + 26), sc(cyy + 5), sc(col_w - 36), sc(17));
+        } else {
+            move_to(ac.label, sc(cx), sc(cyy), sc(col_w - 10), sc(17));
+            move_to(ac.hwnd, sc(cx), sc(cyy + 19), sc(col_w - 20), sc(26));
+        }
         i += 1;
     }
     let rows = i.div_ceil(3).max(1) as i32;
@@ -3208,20 +3213,26 @@ fn position_advanced(g: &mut Gui) {
             cy += 20 + 78 + 8;
             continue;
         }
-        move_to(ctl.label, sc(cx), sc(cy), sc(col_w), sc(18));
-        let h = if ctl.kind == Kind::Bool { 24 } else { 28 };
-        // llama-server 路径：右侧留出「浏览…」按钮的位置
-        if ctl.key == "app.llamaExe" {
-            move_to(ctl.hwnd, sc(cx), sc(cy + 22), sc(col_w - 24 - 84), sc(h));
-            move_to(
-                g.btn_adv_browse,
-                sc(cx + col_w - 24 - 78),
-                sc(cy + 22),
-                sc(74),
-                sc(h),
-            );
+        // 勾选项：方框在前、文字在后，排在同一个格子里
+        if ctl.kind == Kind::Bool {
+            move_to(ctl.hwnd, sc(cx), sc(cy + 2), sc(24), sc(24));
+            move_to(ctl.label, sc(cx + 26), sc(cy + 5), sc(col_w - 26), sc(18));
         } else {
-            move_to(ctl.hwnd, sc(cx), sc(cy + 22), sc(col_w - 24), sc(h));
+            move_to(ctl.label, sc(cx), sc(cy), sc(col_w), sc(18));
+            let h = 28;
+            // llama-server 路径：右侧留出「浏览…」按钮的位置
+            if ctl.key == "app.llamaExe" {
+                move_to(ctl.hwnd, sc(cx), sc(cy + 22), sc(col_w - 24 - 84), sc(h));
+                move_to(
+                    g.btn_adv_browse,
+                    sc(cx + col_w - 24 - 78),
+                    sc(cy + 22),
+                    sc(74),
+                    sc(h),
+                );
+            } else {
+                move_to(ctl.hwnd, sc(cx), sc(cy + 22), sc(col_w - 24), sc(h));
+            }
         }
         col += 1;
         if col >= 3 {
