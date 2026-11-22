@@ -232,6 +232,92 @@ impl Launcher {
         String::new()
     }
 
+    /// 本机实际可用的引擎列表，顺序与 settings::SELECT_ENGINE 一致。
+    /// 引擎下拉框只显示这里返回的项，没装的引擎不出现。
+    pub fn available_engines(cfg: &Json) -> Vec<&'static str> {
+        let mut v: Vec<&'static str> = Vec::new();
+        // llama.cpp：配置了 exe 就看文件在不在，没配就自动找 llama-server
+        let custom = cfg.s("app.llamaExe", "");
+        let llama_ok = {
+            let t = custom.trim();
+            if !t.is_empty() {
+                std::path::Path::new(t).is_file()
+            } else {
+                Self::detect_llama_exe().is_some()
+            }
+        };
+        if llama_ok {
+            v.push("llama.cpp");
+        }
+        // KVMem / NInfer：配置路径或自动探测任一命中即可
+        let kv_ok = {
+            let t = cfg.s("app.kvmemExe", "");
+            let t = t.trim();
+            (!t.is_empty() && std::path::Path::new(t).is_file()) || !Self::detect_kvmem_exe().is_empty()
+        };
+        if kv_ok {
+            v.push("KVMem");
+        }
+        let ni_ok = {
+            let t = cfg.s("app.ninferExe", "");
+            let t = t.trim();
+            (!t.is_empty() && std::path::Path::new(t).is_file()) || !Self::detect_ninfer_exe().is_empty()
+        };
+        if ni_ok {
+            v.push("NInfer");
+        }
+        v
+    }
+
+    /// 自动查找 llama-server（只看文件是否存在，不管配置）
+    pub fn detect_llama_exe() -> Option<PathBuf> {
+        let base = util::base_dir();
+        let exe_name = if cfg!(windows) {
+            "llama-server.exe"
+        } else {
+            "llama-server"
+        };
+        let mut roots: Vec<PathBuf> = Vec::new();
+        let mut cur = Some(base.as_path());
+        for _ in 0..4 {
+            if let Some(dir) = cur {
+                roots.push(dir.to_path_buf());
+                cur = dir.parent();
+            }
+        }
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        for root in roots {
+            candidates.push(root.join(exe_name));
+            candidates.push(root.join("bin").join(exe_name));
+            if let Ok(rd) = std::fs::read_dir(&root) {
+                let mut dirs: Vec<PathBuf> = rd
+                    .flatten()
+                    .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+                    .map(|e| e.path())
+                    .collect();
+                dirs.sort();
+                for d in dirs {
+                    candidates.push(d.join(exe_name));
+                    candidates.push(d.join("bin").join(exe_name));
+                }
+            }
+        }
+        for c in candidates {
+            if c.is_file() {
+                return Some(c);
+            }
+        }
+        if let Ok(path) = std::env::var("PATH") {
+            for dir in std::env::split_paths(&path) {
+                let c = dir.join(exe_name);
+                if c.is_file() {
+                    return Some(c);
+                }
+            }
+        }
+        None
+    }
+
     /// 定位推理引擎可执行文件（按 launch.engine 在 llama / kvmem 之间切换）
     pub fn resolve_exe(cfg: &Json) -> Result<PathBuf, String> {
         // NInfer 引擎：需要 infer-kvmem-server.exe
@@ -258,54 +344,11 @@ impl Launcher {
             }
             return Err(format!("err.exeNotFound:{}", custom));
         }
-        let base = util::base_dir();
-        let exe_name = if cfg!(windows) {
-            "llama-server.exe"
-        } else {
-            "llama-server"
-        };
-        // 从程序目录向上回溯数层，兼容「exe 在 target/release」与「exe 在工程根」两种布局
-        let mut roots: Vec<PathBuf> = Vec::new();
-        let mut cur = Some(base.as_path());
-        for _ in 0..4 {
-            if let Some(dir) = cur {
-                roots.push(dir.to_path_buf());
-                cur = dir.parent();
-            }
+        // 未指定时自动查找（与可用引擎探测器共用同一套搜索逻辑）
+        match Self::detect_llama_exe() {
+            Some(p) => Ok(p),
+            None => Err("err.exeNotFound:llama-server".into()),
         }
-        let mut candidates: Vec<PathBuf> = Vec::new();
-        for root in roots {
-            candidates.push(root.join(exe_name));
-            candidates.push(root.join("bin").join(exe_name));
-            // 工程内随附的 llama 目录（llama-b12549 之类）
-            if let Ok(rd) = std::fs::read_dir(&root) {
-                let mut dirs: Vec<PathBuf> = rd
-                    .flatten()
-                    .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
-                    .map(|e| e.path())
-                    .collect();
-                dirs.sort();
-                for d in dirs {
-                    candidates.push(d.join(exe_name));
-                    candidates.push(d.join("bin").join(exe_name));
-                }
-            }
-        }
-        for c in candidates {
-            if c.is_file() {
-                return Ok(c);
-            }
-        }
-        // PATH 中查找
-        if let Ok(path) = std::env::var("PATH") {
-            for dir in std::env::split_paths(&path) {
-                let c = dir.join(exe_name);
-                if c.is_file() {
-                    return Ok(c);
-                }
-            }
-        }
-        Err("err.exeNotFound:llama-server".into())
     }
 
     /// 启动时自动识别 llama-server：识别到就写进配置，识别不到返回 None

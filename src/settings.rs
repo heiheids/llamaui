@@ -221,6 +221,9 @@ pub const FIELDS: &[Field] = &[
     ),
     sel("adv.reasoning", "advanced", "field.reasoning", "hint.reasoning", SELECT_REASONING, true),
     num("adv.reasoningBudget", "advanced", "field.reasoningBudget", "hint.reasoningBudget", -1.0, 100000.0, 1.0, true),
+    // 输出上限（tokens）：0 = 自动。思考型模型自动给一个宽裕值，
+    // 否则它可能把预算全花在思考上，返回空答案
+    num("adv.maxOutput", "advanced", "field.maxOutput", "hint.maxOutput", 0.0, 262144.0, 1024.0, true),
     f("adv.chatTemplateFile", Kind::Text, "advanced", "field.chatTemplateFile", "hint.chatTemplateFile", true),
     num("adv.prio", "advanced", "field.prio", "hint.prio", -1.0, 3.0, 1.0, true),
     sel("adv.numa", "advanced", "field.numa", "hint.numa", SELECT_NUMA, true),
@@ -278,6 +281,8 @@ pub fn defaults() -> Json {
     c.set_path("sampling.seed", Json::Num(-1.0));
     c.set_path("adv.reasoning", Json::str("auto"));
     c.set_path("adv.reasoningBudget", Json::Num(-1.0));
+    // 0 = 自动：思考型模型给宽裕的输出上限，普通模型不干预
+    c.set_path("adv.maxOutput", Json::Num(0.0));
     c.set_path("adv.chatTemplateFile", Json::str(""));
     c.set_path("adv.prio", Json::Num(0.0));
     c.set_path("adv.numa", Json::str("auto"));
@@ -425,6 +430,21 @@ fn build_ninfer_args(cfg: &Json, model_path: &str) -> Vec<String> {
     a.push("--max-context".into());
     a.push(ctx.max(need).to_string());
     a
+}
+
+/// 思考型模型自动使用的输出上限（tokens）。
+/// 这类模型先写思考再写答案，上限给小了会「只有思考、没有答案」。
+const THINKING_MAX_OUTPUT: i32 = 16384;
+
+/// 判断模型是不是思考型（读 GGUF 里的 chat template 标记）。
+/// 参数预览用的 "<model>" 占位符没有真实文件，一律按普通模型处理。
+fn model_is_thinking(model_path: &str) -> bool {
+    if model_path == "<model>" {
+        return false;
+    }
+    crate::gguf::read(model_path)
+        .map(|i| i.thinking)
+        .unwrap_or(false)
 }
 
 /// KVMem 引擎（llama-kvmem-server.exe）的命令行。
@@ -620,6 +640,21 @@ pub fn build_args(cfg: &Json, model_path: &str) -> Vec<String> {
             a.push("--spec-type".into());
             a.push("draft-mtp".into());
         }
+    }
+
+    // 输出上限：0 = 自动。思考型模型（chat template 里带 think/reasoning）
+    // 需要足够的输出预算，否则容易把 token 全花在思考上、正文返回空
+    let mo = cfg.i("adv.maxOutput", 0);
+    let out_n: i64 = if mo > 0 {
+        mo
+    } else if mo == 0 && model_is_thinking(model_path) {
+        THINKING_MAX_OUTPUT as i64
+    } else {
+        0
+    };
+    if out_n > 0 {
+        a.push("-n".into());
+        a.push(out_n.to_string());
     }
 
     push_num(&mut a, "-b", cfg, "launch.batchSize", 2048.0);

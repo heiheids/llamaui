@@ -37,6 +37,8 @@ pub struct GgufInfo {
     pub sliding_window: u32,
     /// 内置 MTP（多 token 预测）层数，0 = 不支持
     pub nextn_layers: u32,
+    /// 是否思考型模型（chat template 里带 think / reasoning 之类的开关）
+    pub thinking: bool,
 }
 
 impl GgufInfo {
@@ -126,6 +128,14 @@ pub fn read(path: &str) -> Option<GgufInfo> {
                     arch = val.clone();
                 } else if key == "general.name" {
                     info.name = val;
+                } else if key == "tokenizer.chat_template" {
+                    // 思考型模型会在模板里暴露 think / reasoning 之类的开关或标记，
+                    // 这类模型输出上限要给得足够大，否则只吐思考不吐答案
+                    let low = val.to_lowercase();
+                    info.thinking = low.contains("think")
+                        || low.contains("reasoning")
+                        || low.contains("深思")
+                        || low.contains("思考");
                 } else if key.starts_with("tokenizer.ggml.") {
                     info.has_tokenizer = true;
                 }

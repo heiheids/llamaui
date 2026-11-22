@@ -427,16 +427,35 @@ pub fn build(shared: Shared, hwnd: HWND) {
         g.btn_newkey = make_button(g, "", ID_NEWKEY);
         g.btn_copy_key = make_button(g, "", ID_COPY_KEY);
 
+        // 启动时探测本机实际装了哪些推理引擎；没装的就不出现在下拉框里。
+        // 结果借成 'static 切片，Ctl.options 的类型不用改。
+        let engine_opts: &'static [&'static str] = {
+            let list = match g.shared.lock() {
+                Ok(app) => crate::process::Launcher::available_engines(&app.store.cfg),
+                Err(_) => Vec::new(),
+            };
+            if list.is_empty() {
+                crate::settings::SELECT_ENGINE
+            } else {
+                Box::leak(list.into_boxed_slice())
+            }
+        };
+
         for (idx, f) in FIELDS.iter().enumerate() {
             if f.section != "common" && f.section != "network" {
                 continue;
             }
+            let opts: &'static [&'static str] = if f.key == "launch.engine" {
+                engine_opts
+            } else {
+                f.options
+            };
             let ctl = Ctl {
                 key: f.key,
                 kind: f.kind,
-                hwnd: make_field(g, f.kind, f.options, ID_FIELD_BASE + idx),
+                hwnd: make_field(g, f.kind, opts, ID_FIELD_BASE + idx),
                 label: make_label(g, &i18n(g, f.label)),
-                options: f.options,
+                options: opts,
             };
             g.fields.push(ctl);
         }
@@ -484,17 +503,23 @@ pub fn populate(g: &mut Gui) {
             Kind::Select => {
                 let cur = v.as_str().unwrap_or("");
                 let mut idx = 0;
+                let mut found = false;
                 for (i, opt) in ctl.options.iter().enumerate() {
                     if *opt == cur {
                         idx = i;
+                        found = true;
                     }
                 }
-                // 未设置过（如新增的 launch.engine）时落到第一项并写回配置
-                if cur.is_empty() {
+                // 未设置过（如新增的 launch.engine）时落到第一项并写回配置；
+                // 配置里的引擎本机没装（已从下拉框移除）时同样退到第一项，
+                // 否则界面显示一个引擎、实际却按另一个引擎启动
+                if cur.is_empty() || !found {
                     if let Some(first) = ctl.options.first() {
                         let f = first.to_string();
                         if let Ok(mut app) = g.shared.lock() {
                             app.store.cfg.set_path(ctl.key, crate::json::Json::str(&f));
+                            // 立即落盘：否则下次启动还是读到那个本机没装的引擎
+                            let _ = app.store.save();
                         }
                     }
                 }
