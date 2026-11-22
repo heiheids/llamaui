@@ -352,41 +352,10 @@ unsafe extern "system" fn frame_cb(child: HWND, lp: LPARAM) -> i32 {
         FillRect(hdc, &rr, brush);
         DeleteObject(brush);
     };
-    // 只把“窗口矩形与客户区之间那一圈”补成白色：
-    // 输入框客户区被内缩过（为了让文字居中），这圈内边距要由父窗口补白；
-    // 但绝不能覆盖客户区，否则会把控件自己画的文字刷掉。
-    unsafe {
-        let mut cr = RECT::default();
-        if GetClientRect(child, &mut cr) != 0 {
-            let mut c0 = POINT { x: 0, y: 0 };
-            let mut c1 = POINT {
-                x: cr.right,
-                y: cr.bottom,
-            };
-            ClientToScreen(child, &mut c0);
-            ClientToScreen(child, &mut c1);
-            ScreenToClient(parent, &mut c0);
-            ScreenToClient(parent, &mut c1);
-            let white = CreateSolidBrush(FIELD);
-            // 带垂直滚动条的控件：客户区不含滚动条，右侧那条"边条"其实就是滚动条本体，
-            // 刷白会把滚动条涂掉，所以这种情况下不画右边条。
-            let has_vscroll = (GetWindowLongPtrW(child, GWL_STYLE) as u32 & WS_VSCROLL) != 0;
-            // 上、下、左、右四条边条
-            let mut strips = vec![
-                RECT { left: tl.x, top: tl.y, right: br.x, bottom: c0.y },
-                RECT { left: tl.x, top: c1.y, right: br.x, bottom: br.y },
-                RECT { left: tl.x, top: c0.y, right: c0.x, bottom: c1.y },
-            ];
-            if !has_vscroll {
-                strips.push(RECT { left: c1.x, top: c0.y, right: br.x, bottom: c1.y });
-            }
-            for s in strips.iter() {
-                FillRect(hdc, s, white);
-            }
-            DeleteObject(white);
-        }
-    }
-    // 外扩 1px 的直角边框，营造扁平卡片感
+    // 输入框使用系统默认外观，客户区覆盖整个控件，父窗口不需要再补任何底色。
+    // 之前在这里往“窗口矩形与客户区之间那一圈”刷白，圈宽由控件自己决定
+    // （单行实测上 0 / 下 12、多行右 20 / 下 7），看起来就是一圈宽窄不均的白边。
+    // 现在只沿控件外沿画一圈等宽 1px 的细边框。
     line(tl.x - 1, tl.y - 1, br.x + 1, tl.y);
     line(tl.x - 1, br.y, br.x + 1, br.y + 1);
     line(tl.x - 1, tl.y, tl.x, br.y);

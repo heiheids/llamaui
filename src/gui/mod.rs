@@ -44,29 +44,6 @@ pub unsafe extern "system" fn edit_wnd_proc(
     wp: WPARAM,
     lp: LPARAM,
 ) -> LRESULT {
-    if msg == WM_NCCALCSIZE && wp != 0 {
-        // 上下内边距：单行 6px（30 高的框里把 ~18px 文字居中），多行 4/3px
-        let style = GetWindowLongPtrW(hwnd, -16) as u32; // GWL_STYLE
-        let multi = style & ES_MULTILINE != 0;
-        let (pad_top, pad_bottom, pad_x) = if multi { (4, 3, 1) } else { (6, 6, 1) };
-        let k = layout::scale(hwnd);
-        let p = &mut *(lp as *mut NCCALCSIZE_PARAMS);
-        let r = &mut p.rgrc[0];
-        r.top += layout::s(pad_top, k);
-        r.bottom -= layout::s(pad_bottom, k);
-        r.left += layout::s(pad_x, k);
-        r.right -= layout::s(2, k);
-        // 带垂直滚动条时必须把滚动条那一条留出来，
-        // 否则自绘的客户区会把系统滚动条覆盖掉（日志框就看不到滚动条）
-        if style & WS_VSCROLL != 0 {
-            let sbw = GetSystemMetrics(SM_CXVSCROLL);
-            r.right -= layout::s(sbw.max(12), k);
-        }
-        if r.bottom < r.top {
-            r.bottom = r.top;
-        }
-        return 0;
-    }
     let old = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
     if old == 0 {
         return DefWindowProcW(hwnd, msg, wp, lp);
@@ -319,7 +296,7 @@ fn create_main_window() -> HWND {
     let brush = unsafe { CreateSolidBrush(theme::BG) };
     register_window_class(CLASS_NAME, wnd_proc, brush);
     // WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME
-    let style = 0x00C0_0000 | 0x0008_0000 | 0x0002_0000 | 0x0001_0000 | 0x0004_0000 | 0x0200_0000;
+    let style = 0x00C0_0000 | 0x0008_0000 | 0x0002_0000 | 0x0001_0000 | 0x0004_0000 | 0x0200_0000; // 含 WS_CLIPCHILDREN
     let title = crate::i18n::t(&crate::util::detect_system_lang(), "app.title");
     // 1196x927 → 客户区 1180x888，正好容纳 layout 设计稿
     let hwnd = create_window(CLASS_NAME, &title, 0, style, 60, 30, 1196, 927, 0, 0);
@@ -368,6 +345,12 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                 });
                 unsafe {
                     EndPaint(hwnd, &ps as *const PAINTSTRUCT as *const std::ffi::c_void);
+                    // 输入框外沿那圈 1px 边框要用整窗 DC 来画：
+                    // BeginPaint 的 DC 被裁剪到失效区，紧贴控件的 1px 常落在裁剪区之外，
+                    // 结果边框时有时无。窗口带 WS_CLIPCHILDREN，这个 DC 只覆盖控件以外的区域。
+                    let dc = GetDC(hwnd);
+                    theme::draw_field_frames(dc, hwnd);
+                    ReleaseDC(hwnd, dc);
                 }
                 return 0;
             }

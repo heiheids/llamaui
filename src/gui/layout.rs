@@ -207,6 +207,9 @@ fn layout_margin() -> usize {
 }
 
 fn make_field(g: &Gui, kind: Kind, options: &'static [&'static str], id: usize) -> HWND {
+    // 输入框保持系统默认外观：客户区就是整个控件，不再由父窗口补白。
+    // 之前自定义 WM_NCCALCSIZE 内缩客户区来“让文字居中”，结果父窗口只能
+    // 往控件内边距里刷色，四周出现一圈宽窄不等、没有边界的白斑。
     let h = create_window(
         child_class(kind),
         "",
