@@ -604,10 +604,22 @@ pub fn build_args(cfg: &Json, model_path: &str) -> Vec<String> {
     } else {
         a.push("--no-jinja".into());
     }
-    // MTP（多 token 预测）：模型自带 NextN 层时启用，能明显提升生成速度
+    // MTP（多 token 预测）：模型自带 NextN 层时启用，能明显提升生成速度。
+    // 很多模型没有 NextN 层，这时传 --spec-type draft-mtp 会让 llama-server
+    // 直接启动失败（failed to create MTP context），所以先看一眼 GGUF 头。
     if cfg.b("launch.mtp", false) {
-        a.push("--spec-type".into());
-        a.push("draft-mtp".into());
+        let has_mtp = if model_path == "<model>" {
+            // 参数预览之类的场景没有真实路径，按开关显示
+            true
+        } else {
+            crate::gguf::read(model_path)
+                .map(|i| i.nextn_layers > 0)
+                .unwrap_or(false)
+        };
+        if has_mtp {
+            a.push("--spec-type".into());
+            a.push("draft-mtp".into());
+        }
     }
 
     push_num(&mut a, "-b", cfg, "launch.batchSize", 2048.0);

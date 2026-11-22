@@ -403,9 +403,13 @@ fn is_model_file(p: &Path) -> bool {
 }
 
 fn is_gguf(p: &Path) -> bool {
-    p.extension()
-        .map(|e| e.to_string_lossy().eq_ignore_ascii_case("gguf"))
-        .unwrap_or(false)
+    // 正常是 .gguf；但浏览器/下载器常把它存成 .gguf_file 之类，
+    // 只按扩展名严格相等会漏掉这些文件（llama-server 本身不看在扩展名）
+    let name = p
+        .file_name()
+        .map(|s| s.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    name.ends_with(".gguf") || name.ends_with(".gguf_file")
 }
 
 /// 是否为视觉投影文件（mmproj-*.gguf 之类）
