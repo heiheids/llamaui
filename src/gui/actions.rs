@@ -3268,12 +3268,59 @@ fn position_advanced(g: &mut Gui) {
     let sc = |v: i32| layout::s(v, k);
     let x0 = 16;
     let col_w = 330;
-    let row_h = 52;
     // 多行框（扫描目录、附加参数）固定占满整行，宽度按窗口客户区算
-    let (cw, _ch) = client_size(g.adv_hwnd);
+    let (cw, ch) = client_size(g.adv_hwnd);
     let full_w = ((cw - sc(32)) / sc(1)).max(sc(400)) as i32;
+
+    // ---- 自适应压缩 ----
+    // 选项很多，按原来的行距排下来会顶出窗口底部（保存/关闭按钮都看不见）。
+    // 先按紧凑行距试算总高度，仍然放不下就把行距继续压，直到塞进客户区。
+    let kinds: Vec<Kind> = g.adv_fields.iter().map(|c| c.kind).collect();
+    let has_auto = crate::paramspec::auto_params().len() > 0;
+    // 给定行距/多行框高度/列表高度时，内容需要多高
+    let content_h = |row_h: i32, ml_h: i32, list_h: i32| -> i32 {
+        let mut cy = 10;
+        let mut col = 0;
+        for kind in kinds.iter() {
+            if *kind == Kind::MultilineText {
+                if col != 0 {
+                    col = 0;
+                    cy += row_h;
+                }
+                cy += 18 + ml_h + 6;
+                continue;
+            }
+            col += 1;
+            if col >= 3 {
+                col = 0;
+                cy += row_h;
+            }
+        }
+        if col != 0 {
+            cy += row_h;
+        }
+        // 扫描目录块：标签 + 列表
+        cy += 6 + 18 + 22 + list_h + 8;
+        if has_auto {
+            cy += 6 + 34;
+        }
+        // 底部按钮
+        cy + 8 + 36 + 8
+    };
+
+    let mut row_h = 42;
+    let mut ml_h = 56;
+    let mut list_h = 60;
+    while content_h(row_h, ml_h, list_h) > ch - 8 && row_h > 34 {
+        row_h -= 2;
+    }
+    if content_h(row_h, ml_h, list_h) > ch - 8 {
+        ml_h = 44;
+        list_h = 42;
+    }
+
     let mut cx = x0;
-    let mut cy = 14;
+    let mut cy = 10;
     let mut col = 0;
     for ctl in g.adv_fields.iter() {
         if ctl.kind == Kind::MultilineText {
@@ -3283,30 +3330,30 @@ fn position_advanced(g: &mut Gui) {
                 cx = x0;
                 cy += row_h;
             }
-            move_to(ctl.label, sc(cx), sc(cy), sc(col_w), sc(18));
-            move_to(ctl.hwnd, sc(x0), sc(cy + 20), full_w, sc(78));
-            cy += 20 + 78 + 8;
+            move_to(ctl.label, sc(cx), sc(cy), sc(col_w), sc(17));
+            move_to(ctl.hwnd, sc(x0), sc(cy + 18), full_w, sc(ml_h));
+            cy += 18 + ml_h + 6;
             continue;
         }
         // 勾选项：方框在前、文字在后，排在同一个格子里
         if ctl.kind == Kind::Bool {
-            move_to(ctl.hwnd, sc(cx), sc(cy + 2), sc(24), sc(24));
-            move_to(ctl.label, sc(cx + 26), sc(cy + 5), sc(col_w - 26), sc(18));
+            move_to(ctl.hwnd, sc(cx), sc(cy + 1), sc(22), sc(22));
+            move_to(ctl.label, sc(cx + 24), sc(cy + 4), sc(col_w - 24), sc(17));
         } else {
-            move_to(ctl.label, sc(cx), sc(cy), sc(col_w), sc(18));
-            let h = 28;
+            move_to(ctl.label, sc(cx), sc(cy), sc(col_w), sc(17));
+            let h = 26;
             // llama-server 路径：右侧留出「浏览…」按钮的位置
             if ctl.key == "app.llamaExe" {
-                move_to(ctl.hwnd, sc(cx), sc(cy + 22), sc(col_w - 24 - 84), sc(h));
+                move_to(ctl.hwnd, sc(cx), sc(cy + 18), sc(col_w - 24 - 84), sc(h));
                 move_to(
                     g.btn_adv_browse,
                     sc(cx + col_w - 24 - 78),
-                    sc(cy + 22),
+                    sc(cy + 18),
                     sc(74),
                     sc(h),
                 );
             } else {
-                move_to(ctl.hwnd, sc(cx), sc(cy + 22), sc(col_w - 24), sc(h));
+                move_to(ctl.hwnd, sc(cx), sc(cy + 18), sc(col_w - 24), sc(h));
             }
         }
         col += 1;
@@ -3324,27 +3371,28 @@ fn position_advanced(g: &mut Gui) {
 
     // ---- 模型扫描目录：列表 + 添加按钮 ----
     cy += 6;
-    move_to(g.lbl_scan_dirs, sc(x0), sc(cy), sc(full_w), sc(18));
-    cy += 22;
-    move_to(g.scan_list, sc(x0), sc(cy), sc(full_w), sc(82));
-    cy += 82 + 8;
+    move_to(g.lbl_scan_dirs, sc(x0), sc(cy), sc(full_w), sc(17));
+    cy += 20;
+    move_to(g.scan_list, sc(x0), sc(cy), sc(full_w), sc(list_h));
+    cy += list_h + 6;
 
     // ---- 自动发现的新参数：一行入口（没有新参数时整块隐藏）----
-    if crate::paramspec::auto_params().len() > 0 {
-        cy += 6;
+    if has_auto {
+        cy += 4;
         let total = crate::paramspec::auto_params().len();
         set_text(
             g.lbl_auto,
             &format!("{} {}: {}", i18n(g, "label.autoParams"), total, i18n(g, "label.autoParamsMore")),
         );
-        move_to(g.lbl_auto, sc(x0), sc(cy + 4), sc(col_w * 2 + 30), sc(18));
-        move_to(g.btn_auto, sc(x0 + col_w * 2 + 40), sc(cy), sc(112), sc(28));
-        cy += 40;
+        move_to(g.lbl_auto, sc(x0), sc(cy + 4), sc(col_w * 2 + 30), sc(17));
+        move_to(g.btn_auto, sc(x0 + col_w * 2 + 40), sc(cy), sc(112), sc(26));
+        cy += 34;
     }
 
-    move_to(g.btn_adv_save, sc(920), sc(cy + 16), sc(112), sc(36));
-    move_to(g.btn_adv_close, sc(796), sc(cy + 16), sc(112), sc(36));
-
+    // 底部按钮始终贴在算出来的位置，并保证不越过客户区底边
+    let btn_y = (cy + 6).min(ch - sc(40));
+    move_to(g.btn_adv_save, sc(920), btn_y, sc(112), sc(32));
+    move_to(g.btn_adv_close, sc(796), btn_y, sc(112), sc(32));
 }
 
 fn populate_advanced(g: &mut Gui) {
