@@ -44,6 +44,37 @@ pub unsafe extern "system" fn edit_wnd_proc(
     wp: WPARAM,
     lp: LPARAM,
 ) -> LRESULT {
+    // 单行 EDIT 会把文字画在客户区顶部，30px 高的框里文字明显偏上，
+    // 所以把客户区往下挪一点（底部不动），上方的内边距由父窗口刷成输入框底色。
+    // 多行框保持上下对称的小内边距。
+    if msg == WM_NCCALCSIZE && wp != 0 {
+        let style = GetWindowLongPtrW(hwnd, -16) as u32; // GWL_STYLE
+        let multi = style & ES_MULTILINE != 0;
+        let k = layout::scale(hwnd);
+        let p = &mut *(lp as *mut NCCALCSIZE_PARAMS);
+        let r = &mut p.rgrc[0];
+        let pad_x = layout::s(1, k);
+        r.left += pad_x;
+        r.right -= pad_x;
+        if multi {
+            let pad_v = layout::s(3, k);
+            r.top += pad_v;
+            r.bottom -= pad_v;
+        } else {
+            // 只缩顶部，让文字落到框的垂直中间
+            r.top += layout::s(6, k);
+            r.bottom -= layout::s(0, k);
+        }
+        // 带垂直滚动条时必须把滚动条那一条留出来
+        if style & WS_VSCROLL != 0 {
+            let sbw = GetSystemMetrics(SM_CXVSCROLL);
+            r.right -= layout::s(sbw.max(12), k);
+        }
+        if r.bottom < r.top {
+            r.bottom = r.top;
+        }
+        return 0;
+    }
     let old = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
     if old == 0 {
         return DefWindowProcW(hwnd, msg, wp, lp);

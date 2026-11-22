@@ -8,8 +8,8 @@ use super::win::*;
 // ---------------- 配色 ----------------
 /// 主背景 #F2F7FD
 pub const BG: u32 = 0x00FD_F7F2;
-/// 顶栏 / 卡片 #E7F0FC
-pub const BAR: u32 = 0x00FC_F0E7;
+/// 顶栏 / 卡片：与页面底色一致，顶部不再用更深一档的色块
+pub const BAR: u32 = 0x00FD_F7F2;
 /// 输入框、列表底色 #FFFFFF
 pub const FIELD: u32 = 0x00FF_FFFF;
 /// 主色蓝 #2E6BE6
@@ -352,10 +352,46 @@ unsafe extern "system" fn frame_cb(child: HWND, lp: LPARAM) -> i32 {
         FillRect(hdc, &rr, brush);
         DeleteObject(brush);
     };
-    // 输入框使用系统默认外观，客户区覆盖整个控件，父窗口不需要再补任何底色。
-    // 之前在这里往“窗口矩形与客户区之间那一圈”刷白，圈宽由控件自己决定
-    // （单行实测上 0 / 下 12、多行右 20 / 下 7），看起来就是一圈宽窄不均的白边。
-    // 现在只沿控件外沿画一圈等宽 1px 的细边框。
+    // 客户区被内缩后，窗口矩形与客户区之间那圈内边距要由父窗口补成输入框底色，
+    // 否则会露出页面底色，看着像框里缺了一块。补完再沿外沿画 1px 边框。
+    unsafe {
+        let mut cr = RECT::default();
+        if GetClientRect(child, &mut cr) != 0 {
+            let mut c0 = POINT { x: 0, y: 0 };
+            let mut c1 = POINT {
+                x: cr.right,
+                y: cr.bottom,
+            };
+            ClientToScreen(child, &mut c0);
+            ClientToScreen(child, &mut c1);
+            ScreenToClient(parent, &mut c0);
+            ScreenToClient(parent, &mut c1);
+            let white = CreateSolidBrush(FIELD);
+            let mut strips = vec![
+                // 上
+                RECT { left: tl.x, top: tl.y, right: br.x, bottom: c0.y },
+                // 下
+                RECT { left: tl.x, top: c1.y, right: br.x, bottom: br.y },
+                // 左
+                RECT { left: tl.x, top: c0.y, right: c0.x, bottom: c1.y },
+            ];
+            // 带垂直滚动条时右侧边条就是滚动条本体，涂了会把滚动条盖掉
+            let has_vscroll = (GetWindowLongPtrW(child, GWL_STYLE) as u32 & WS_VSCROLL) != 0;
+            if !has_vscroll {
+                strips.push(RECT {
+                    left: c1.x,
+                    top: c0.y,
+                    right: br.x,
+                    bottom: c1.y,
+                });
+            }
+            for s in strips.iter() {
+                FillRect(hdc, s, white);
+            }
+            DeleteObject(white);
+        }
+    }
+    // 沿控件外沿再画一圈等宽 1px 的细边框
     line(tl.x - 1, tl.y - 1, br.x + 1, tl.y);
     line(tl.x - 1, br.y, br.x + 1, br.y + 1);
     line(tl.x - 1, tl.y, tl.x, br.y);

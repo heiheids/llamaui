@@ -399,6 +399,8 @@ pub const WM_CTLCOLORSTATIC: u32 = 0x0138;
 pub const WM_CTLCOLORBTN: u32 = 0x0135;
 pub const WM_SETFONT: u32 = 0x0030;
 pub const CB_ADDSTRING: u32 = 0x0143;
+pub const CB_SETITEMHEIGHT: u32 = 0x0153;
+pub const CB_GETITEMHEIGHT: u32 = 0x0154;
 pub const CB_GETCURSEL: u32 = 0x0147;
 pub const CB_SETCURSEL: u32 = 0x014E;
 pub const CB_RESETCONTENT: u32 = 0x014B;
@@ -618,8 +620,29 @@ pub fn combo_index(hwnd: HWND) -> usize {
     }
 }
 
-pub fn combo_select(hwnd: HWND, index: usize) {
+/// 把下拉框“闭合状态”的高度调成 want 像素。
+/// CBS_DROPDOWNLIST 的闭合高度 = 选择区项高 + 边框，光设窗口高度没用，
+/// 必须用 CB_SETITEMHEIGHT(-1) 改选择区的项高。
+pub fn combo_fit_height(hwnd: HWND, want: i32) {
     unsafe {
+        let mut r = RECT::default();
+        if GetWindowRect(hwnd, &mut r) == 0 {
+            return;
+        }
+        let cur = r.bottom - r.top;
+        let item = SendMessageW(hwnd, CB_GETITEMHEIGHT, usize::MAX, 0) as i32;
+        if item <= 0 || cur <= 0 {
+            return;
+        }
+        let border = cur - item; // 上下边框总高度，通常 6px
+        let target_item = want - border;
+        if target_item > 8 && target_item != item {
+            SendMessageW(hwnd, CB_SETITEMHEIGHT, usize::MAX, target_item as LPARAM);
+        }
+    }
+}
+
+pub fn combo_select(hwnd: HWND, index: usize) {    unsafe {
         SendMessageW(hwnd, CB_SETCURSEL, index, 0);
     }
 }

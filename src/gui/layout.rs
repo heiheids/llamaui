@@ -695,7 +695,7 @@ pub fn position_all(g: &mut Gui) {
     move_to(g.btn_adv, w(1070), h(12), w(94), h(30));
 
     // ---- 顶栏第二行：复制按钮在地址左侧 ----
-    move_to(g.btn_copy_ep, w(16), h(49), w(56), h(26));
+    move_to(g.btn_copy_ep, w(16), h(49), w(56), h(CTL_H));
     move_to(g.st_endpoint, w(80), h(50), w(360), h(24));
     move_to(g.st_cpu, w(452), h(50), w(100), h(24));
     move_to(g.st_ram, w(560), h(50), w(170), h(24));
@@ -709,8 +709,8 @@ pub fn position_all(g: &mut Gui) {
     move_to(g.btn_start, w(16), h(524), w(300), h(CTL_H));
     move_to(g.btn_stop, w(16), h(566), w(300), h(CTL_H));
     move_to(g.lbl_args, w(16), h(608), w(104), h(18));
-    move_to(g.btn_param_help, w(122), h(602), w(92), h(26));
-    move_to(g.btn_estimate, w(220), h(602), w(96), h(26));
+    move_to(g.btn_param_help, w(122), h(602), w(92), h(CTL_H));
+    move_to(g.btn_estimate, w(220), h(602), w(96), h(CTL_H));
     move_to(g.args_view, w(16), h(630), w(300), h(242));
 
     // ---- 右侧：三列网格 ----
@@ -762,7 +762,7 @@ pub fn position_all(g: &mut Gui) {
     for (i, ctl) in checks.iter().enumerate() {
         let cx = X0 + (i as i32) * step;
         move_to(ctl.label, w(cx), h(check_row_y), 0, 0);
-        move_to(ctl.hwnd, w(cx), h(check_row_y), w(slot - 8), h(26));
+        move_to(ctl.hwnd, w(cx), h(check_row_y), w(slot - 8), h(CTL_H));
     }
     y = check_row_y + 34;
 
@@ -798,10 +798,21 @@ pub fn position_all(g: &mut Gui) {
     move_to(g.btn_llama_dl, w(848), h(y - 2), w(100), h(CTL_H));
     // 顶部警示条（爆显存风险等），把日志区整体下移并缩短，给提示留出位置
     // 放在按钮行下方（按钮结束于 y+28），否则这条 1160 宽的标签会盖住按钮底部几行
-    move_to(g.lbl_warn, w(X0), h(y + 30), w(1160), h(18));
+    move_to(g.lbl_warn, w(X0), h(y + 30), w(1164 - X0), h(18));
     let log_top = y + 50;
     let log_h = 872 - log_top;
     move_to(g.log_edit, w(X0), h(log_top), w(828), h(log_h.max(80)));
+
+    // 下拉框的闭合高度默认比输入框矮几像素，这里统一成 CTL_H
+    for ctl in g.fields.iter() {
+        if ctl.kind == Kind::Select && ctl.hwnd != 0 {
+            combo_fit_height(ctl.hwnd, h(CTL_H));
+        }
+    }
+    // 顶栏语言下拉框同样对齐（它不在 fields 里，单独处理）
+    if g.lang_combo != 0 {
+        combo_fit_height(g.lang_combo, h(CTL_H));
+    }
 
     // 控件都挪好之后整窗重绘一次：否则父窗口上残留的旧边框会停在老位置
     unsafe {
