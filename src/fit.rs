@@ -50,6 +50,11 @@ pub struct Estimate {
 /// 所以凡是要「全放 GPU」的地方都写 99。
 pub const ALL_LAYERS: u32 = 99;
 
+/// 可以用来放模型的显存比例。
+/// 留 10% 给桌面/浏览器等其它程序：Windows 的 WDDM 到 100% 不会报错，
+/// 而是把显存换页到内存，表现是速度骤降。告警阈值也用同一个数，保持口径一致。
+pub const VRAM_FIT_RATIO: f64 = 0.90;
+
 /// 估算一次运行需要的显存
 ///
 /// * `file_bytes`：模型文件大小
@@ -203,7 +208,7 @@ pub fn profiles_cal(
     };
     let ctx0 = if cur_ctx >= 2048 { cur_ctx } else { 8192 };
     let budget = if vram_total_gb > 0.0 {
-        vram_total_gb * 0.92
+        vram_total_gb * VRAM_FIT_RATIO
     } else {
         0.0
     };
