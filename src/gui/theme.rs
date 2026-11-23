@@ -452,3 +452,300 @@ pub fn hline(hdc: HDC, x0: i32, y: i32, x1: i32) {
     };
     rgb_fill(hdc, &rc, BORDER);
 }
+
+// ---------------------------------------------------------------------------
+// 数据监控窗口的绘制
+// ---------------------------------------------------------------------------
+
+/// 在 (x, y) 处写一行文字，返回占用高度
+fn draw_text(hdc: HDC, x: i32, y: i32, text: impl AsRef<str>, color: u32, font: HFONT) -> i32 {
+    let text = text.as_ref();
+    unsafe {
+        let saved = SaveDC(hdc);
+        SetBkMode(hdc, 1);
+        SetTextColor(hdc, color);
+        SelectObject(hdc, font);
+        let w = wide(text);
+        TextOutW(hdc, x, y, w.as_ptr(), (w.len() - 1) as i32);
+        let mut size = SIZE::default();
+        GetTextExtentPoint32W(hdc, w.as_ptr(), (w.len() - 1) as i32, &mut size);
+        RestoreDC(hdc, saved);
+        size.cy.max(1)
+    }
+}
+
+/// 一块带边框的面板：填底色 + 1px 边框
+fn panel_frame(hdc: HDC, rc: &RECT) {
+    rgb_fill(hdc, rc, FIELD);
+    unsafe {
+        let edge = CreateSolidBrush(FRAME);
+        let strips = [
+            RECT { left: rc.left, top: rc.top, right: rc.right, bottom: rc.top + 1 },
+            RECT { left: rc.left, top: rc.bottom - 1, right: rc.right, bottom: rc.bottom },
+            RECT { left: rc.left, top: rc.top, right: rc.left + 1, bottom: rc.bottom },
+            RECT { left: rc.right - 1, top: rc.top, right: rc.right, bottom: rc.bottom },
+        ];
+        for s in strips.iter() {
+            FillRect(hdc, s, edge);
+        }
+        DeleteObject(edge);
+    }
+}
+
+/// 数字格式化：带一位小数
+fn fmt1(v: f64) -> String {
+    if v <= 0.0 {
+        "—".to_string()
+    } else {
+        format!("{:.1}", v)
+    }
+}
+
+/// 监控窗口整体绘制（三个实时框 + 请求历史表）
+pub fn paint_monitor(
+    hdc: HDC,
+    rect: RECT,
+    snap: &crate::monitor::Snapshot,
+    font: HFONT,
+    font_bold: HFONT,
+    tr: &dyn Fn(&str) -> String,
+) {
+    // 背景
+    rgb_fill(hdc, &rect, BG);
+
+    let left = rect.left + 16;
+    let right = rect.right - 16;
+    let mut y = rect.top + 12;
+
+    // ---- 头部：模型 / 引擎 / 端口 / 上下文 / 槽位 / build ----
+    let head_model = if snap.model.is_empty() {
+        "—".to_string()
+    } else {
+        snap.model.clone()
+    };
+    let head = format!(
+        "{}  {}    {}: {}    {}: {}    {}: {}",
+        tr("monitor.model"),
+        head_model,
+        tr("monitor.engine"),
+        if snap.engine.is_empty() { "—" } else { &snap.engine },
+        tr("monitor.port"),
+        if snap.port > 0 { snap.port.to_string() } else { "—".to_string() },
+        tr("monitor.ctx"),
+        if snap.ctx > 0 { snap.ctx.to_string() } else { "—".to_string() },
+    );
+    draw_text(hdc, left, y, &head, TEXT, font_bold);
+    y += 22;
+    let sub = format!(
+        "{}: {}    {}: {}    {}: {}",
+        tr("monitor.slots"),
+        if snap.slots > 0 { snap.slots.to_string() } else { "—".to_string() },
+        tr("monitor.uptime"),
+        fmt_uptime(snap.uptime),
+        tr("monitor.build"),
+        if snap.build.is_empty() { "—" } else { &snap.build },
+    );
+    draw_text(hdc, left, y, &sub, TEXT_DIM, font);
+    y += 24;
+    hline(hdc, left, y, right);
+    y += 10;
+
+    // ---- 三框同一行 ----
+    let gap = 12;
+    let total_w = right - left;
+    let box_w = (total_w - gap * 2) / 3;
+    let box_h = 132;
+
+    // GPU
+    let gpu_rc = RECT { left, top: y, right: left + box_w, bottom: y + box_h };
+    panel_frame(hdc, &gpu_rc);
+    let mut ty = y + 8;
+    draw_text(hdc, left + 10, ty, tr("monitor.gpu"), TEXT, font_bold);
+    ty += 26;
+    if snap.gpu.ok {
+        let rows = [
+            (tr("monitor.gpuUtil"), format!("{} %", snap.gpu.util)),
+            (
+                tr("monitor.vram"),
+                format!("{:.1} / {:.1} GB", snap.gpu.mem_used as f64 / 1024.0, snap.gpu.mem_total as f64 / 1024.0),
+            ),
+            (
+                tr("monitor.gpuTemp"),
+                if snap.gpu.temp >= 0 { format!("{} °C", snap.gpu.temp) } else { "—".to_string() },
+            ),
+            (
+                tr("monitor.gpuPower"),
+                if snap.gpu.power_w > 0 { format!("{} W", snap.gpu.power_w) } else { "—".to_string() },
+            ),
+        ];
+        for (k, v) in rows {
+            draw_text(hdc, left + 10, ty, &k, TEXT_DIM, font);
+            let vw = text_width(hdc, &v, font);
+            draw_text(hdc, left + box_w - 10 - vw, ty, &v, TEXT, font);
+            ty += 22;
+        }
+    } else {
+        draw_text(hdc, left + 10, ty, tr("monitor.nvmlNA"), TEXT_DIM, font);
+    }
+
+    // 实时 · 输入
+    let p_rc = RECT {
+        left: left + box_w + gap,
+        top: y,
+        right: left + box_w * 2 + gap,
+        bottom: y + box_h,
+    };
+    panel_frame(hdc, &p_rc);
+    let px = p_rc.left + 10;
+    let mut ty = y + 8;
+    draw_text(hdc, px, ty, tr("monitor.rtPrompt"), TEXT, font_bold);
+    ty += 26;
+    let phase_txt = match snap.rt.phase {
+        crate::monitor::Phase::Prompt => tr("monitor.phasePrompt"),
+        crate::monitor::Phase::Decode => tr("monitor.phaseDecode"),
+        crate::monitor::Phase::Idle => tr("monitor.phaseIdle"),
+    };
+    let cache_pct = if snap.rt.prompt_tokens > 0 {
+        snap.rt.cache_hit as f64 * 100.0 / snap.rt.prompt_tokens as f64
+    } else {
+        0.0
+    };
+    let prows = [
+        (tr("monitor.phase"), phase_txt),
+        (tr("monitor.promptTokens"), fmt_u64(snap.rt.prompt_tokens)),
+        (tr("monitor.promptTps"), fmt_tps(snap.rt.prompt_tps)),
+        (
+            tr("monitor.cacheHit"),
+            format!("{} ({:.0}%)", fmt_u64(snap.rt.cache_hit), cache_pct),
+        ),
+    ];
+    for (k, v) in prows {
+        draw_text(hdc, px, ty, &k, TEXT_DIM, font);
+        let vw = text_width(hdc, &v, font);
+        draw_text(hdc, p_rc.right - 10 - vw, ty, &v, TEXT, font);
+        ty += 22;
+    }
+
+    // 实时 · 生成
+    let d_rc = RECT {
+        left: left + box_w * 2 + gap * 2,
+        top: y,
+        right,
+        bottom: y + box_h,
+    };
+    panel_frame(hdc, &d_rc);
+    let dx = d_rc.left + 10;
+    let mut ty = y + 8;
+    draw_text(hdc, dx, ty, tr("monitor.rtDecode"), TEXT, font_bold);
+    ty += 26;
+    let dfields = [
+        (tr("monitor.genTokens"), fmt_u64(snap.rt.gen_tokens)),
+        (tr("monitor.genTps"), fmt_tps(snap.rt.gen_tps)),
+        (
+            tr("monitor.remaining"),
+            if snap.rt.remaining >= 0 { snap.rt.remaining.to_string() } else { "—".to_string() },
+        ),
+        (tr("monitor.ctxPeak"), fmt_u64(snap.rt.ctx_peak)),
+    ];
+    for (k, v) in dfields {
+        draw_text(hdc, dx, ty, &k, TEXT_DIM, font);
+        let vw = text_width(hdc, &v, font);
+        draw_text(hdc, d_rc.right - 10 - vw, ty, &v, TEXT, font);
+        ty += 22;
+    }
+
+    y += box_h + 12;
+
+    // ---- 请求历史 ----
+    let hist_bottom = rect.bottom - 12;
+    let hist_rc = RECT { left, top: y, right, bottom: hist_bottom };
+    if hist_rc.bottom > hist_rc.top + 40 {
+        panel_frame(hdc, &hist_rc);
+        let hx = hist_rc.left + 10;
+        let mut hy = hist_rc.top + 8;
+        draw_text(hdc, hx, hy, tr("monitor.history"), TEXT, font_bold);
+        hy += 24;
+
+        // 表头：列定义（左对齐文字列 + 右对齐数值列）
+        let cols = [
+            tr("monitor.colIndex"),
+            tr("monitor.colTime"),
+            tr("monitor.colPrompt"),
+            tr("monitor.colGen"),
+            tr("monitor.colPrefill"),
+            tr("monitor.colDecode"),
+            tr("monitor.colTotal"),
+            tr("monitor.colMtp"),
+        ];
+        let widths = [40, 80, 80, 80, 110, 100, 90, 70];
+        // 表头底色
+        let head_rc = RECT {
+            left: hist_rc.left + 1,
+            top: hy - 2,
+            right: hist_rc.right - 1,
+            bottom: hy + 20,
+        };
+        rgb_fill(hdc, &head_rc, LOG_BG);
+        let mut cx = hx;
+        for (i, c) in cols.iter().enumerate() {
+            draw_text(hdc, cx, hy, c, TEXT_DIM, font);
+            cx += widths[i];
+        }
+        hy += 24;
+        hline(hdc, hist_rc.left + 1, hy - 4, hist_rc.right - 1);
+
+        if snap.hist.is_empty() {
+            draw_text(hdc, hx, hy, tr("monitor.historyEmpty"), TEXT_DIM, font);
+        } else {
+            let max_rows = ((hist_rc.bottom - hy - 8) / 20).max(0) as usize;
+            let start = snap.hist.len().saturating_sub(max_rows);
+            for (n, row) in snap.hist[start..].iter().enumerate() {
+                let mut cx = hx;
+                let idx = (start + n + 1).to_string();
+                let cells = [
+                    idx,
+                    if row.time.is_empty() { "—".to_string() } else { row.time.clone() },
+                    row.prompt.to_string(),
+                    row.gen.to_string(),
+                    fmt1(row.prefill_tps),
+                    fmt1(row.decode_tps),
+                    format!("{:.1}s", row.total_s),
+                    match row.mtp {
+                        Some(v) => format!("{:.0}%", v * 100.0),
+                        None => "—".to_string(),
+                    },
+                ];
+                for (i, cell) in cells.iter().enumerate() {
+                    draw_text(hdc, cx, hy, cell, TEXT, font);
+                    cx += widths[i];
+                }
+                hy += 20;
+            }
+        }
+    }
+}
+
+/// 速度：没有数据就是「—」，不要出现「—/s」
+fn fmt_tps(v: f64) -> String {
+    if v <= 0.0 {
+        "—".to_string()
+    } else {
+        format!("{:.1}/s", v)
+    }
+}
+
+fn fmt_u64(v: u64) -> String {
+    if v == 0 {
+        "0".to_string()
+    } else {
+        v.to_string()
+    }
+}
+
+fn fmt_uptime(secs: u64) -> String {
+    if secs == 0 {
+        "—".to_string()
+    } else {
+        format!("{}h {}m", secs / 3600, (secs % 3600) / 60)
+    }
+}

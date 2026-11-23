@@ -105,6 +105,21 @@ resets on every start.
 
 ---
 
+### Data monitor
+
+The **Data monitor** button in the header opens a separate window with live numbers for the
+current run (closing it only stops sampling, the server keeps running):
+
+- **GPU**: utilization, VRAM, temperature, power (via NVML; shows "unavailable" when the driver does not expose it)
+- **Live · prompt**: phase, prompt tokens, prompt speed, KV cache hit
+- **Live · decode**: generated tokens, output speed, remaining tokens, context peak
+- **Request history**: prompt/output tokens, prefill and decode speed, total time, MTP acceptance
+
+Numbers come from `GET /slots`, `GET /props` and the run log, so requests from *any* client
+(the built-in chat page, your agent framework, curl) are counted. A dash means the value is
+not available right now (not enabled, not exposed by the driver, or the server is not running).
+
+
 ## 5. Arguments preview and “Explain args”
 
 The bottom-left pane shows the exact command line that will be passed (API key redacted).

@@ -15,6 +15,7 @@ pub const ID_START: usize = 103;
 pub const ID_STOP: usize = 104;
 pub const ID_CHAT: usize = 105;
 pub const ID_ADV: usize = 106;
+pub const ID_MONITOR: usize = 107;
 pub const ID_SAVE: usize = 108;
 pub const ID_NEWKEY: usize = 109;
 pub const ID_LANG: usize = 110;
@@ -263,6 +264,7 @@ pub fn build(shared: Shared, hwnd: HWND) {
         btn_stop: 0,
         btn_chat: 0,
         btn_adv: 0,
+        btn_monitor: 0,
         btn_save: 0,
         btn_newkey: 0,
         btn_copy_ep: 0,
@@ -288,6 +290,7 @@ pub fn build(shared: Shared, hwnd: HWND) {
         btn_adv_browse: 0,
         btn_param_help: 0,
         btn_estimate: 0,
+        mon_hwnd: 0,
         fit_hwnd: 0,
         vram_warned: false,
         help_hwnd: 0,
@@ -368,6 +371,7 @@ pub fn build(shared: Shared, hwnd: HWND) {
         set_font(g.lang_combo, g.font);
         g.btn_chat = make_button(g, "", ID_CHAT);
         g.btn_adv = make_button(g, "", ID_ADV);
+	    g.btn_monitor = make_button(g, "", ID_MONITOR);
 
         // 左侧模型库（自绘列表：识图模型前面带小图标）
         g.lbl_models = make_label(g, "");
@@ -607,6 +611,7 @@ pub fn apply_language(g: &mut Gui) {
     set_text(g.btn_start, &i18n(g, "button.start"));
     set_text(g.btn_stop, &i18n(g, "button.stop"));
     set_text(g.btn_chat, &i18n(g, "button.chat"));
+    set_text(g.btn_monitor, &i18n(g, "button.monitor"));
     set_text(g.btn_adv, &i18n(g, "button.advanced"));
     set_text(g.btn_save, &i18n(g, "button.save"));
     set_text(g.btn_newkey, &i18n(g, "button.newKey"));
@@ -688,11 +693,12 @@ pub fn position_all(g: &mut Gui) {
         right: w(114) + w(360),
         bottom: h(14) + h(26),
     };
-    move_to(g.st_host, w(482), h(14), w(176), h(26));
-    move_to(g.st_uptime, w(666), h(14), w(134), h(26));
-    move_to(g.lang_combo, w(808), h(14), w(142), h(200));
-    move_to(g.btn_chat, w(958), h(12), w(104), h(30));
-    move_to(g.btn_adv, w(1070), h(12), w(94), h(30));
+    move_to(g.st_host, w(482), h(14), w(150), h(26));
+    move_to(g.st_uptime, w(640), h(14), w(110), h(26));
+    move_to(g.lang_combo, w(758), h(14), w(110), h(200));
+    move_to(g.btn_monitor, w(876), h(12), w(92), h(30));
+    move_to(g.btn_chat, w(976), h(12), w(96), h(30));
+    move_to(g.btn_adv, w(1080), h(12), w(84), h(30));
 
     // ---- 顶栏第二行：复制按钮在地址左侧 ----
     move_to(g.btn_copy_ep, w(16), h(44), w(56), h(CTL_H));

@@ -171,6 +171,7 @@ pub struct Gui {
     pub btn_stop: HWND,
     pub btn_chat: HWND,
     pub btn_adv: HWND,
+    pub btn_monitor: HWND,
     pub btn_save: HWND,
     pub btn_newkey: HWND,
     pub btn_copy_ep: HWND,
@@ -204,6 +205,7 @@ pub struct Gui {
     pub btn_param_help: HWND,
     /// 「显存估算」按钮与窗口
     pub btn_estimate: HWND,
+    pub mon_hwnd: HWND,
     pub fit_hwnd: HWND,
     /// 已经就显存风险写过日志（避免刷屏）
     pub vram_warned: bool,
@@ -273,6 +275,8 @@ pub static HWND_ARGS: AtomicIsize = AtomicIsize::new(0);
 pub static HWND_LOG: AtomicIsize = AtomicIsize::new(0);
 /// 主窗口句柄：只有主窗口才绘制顶栏
 pub static MAIN_HWND: AtomicIsize = AtomicIsize::new(0);
+/// 数据监控窗口句柄（0 = 未打开）
+pub static MON_HWND: AtomicIsize = AtomicIsize::new(0);
 /// 列表项“识图模型”标记位（第 i 位对应第 i 项），供 WM_DRAWITEM 无锁读取
 pub static VISION_BITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 /// 列表项“MoE 模型”标记位
@@ -402,6 +406,36 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                     let dc = GetDC(hwnd);
                     theme::draw_field_frames(dc, hwnd);
                     ReleaseDC(hwnd, dc);
+                }
+                return 0;
+            }
+            // 数据监控窗口：整窗自绘（没有子控件）
+            if hwnd == MON_HWND.load(Ordering::Relaxed) {
+                let mut ps: PAINTSTRUCT = unsafe { std::mem::zeroed() };
+                let hdc = unsafe {
+                    BeginPaint(hwnd, &mut ps as *mut PAINTSTRUCT as *mut std::ffi::c_void)
+                };
+                let (cw, ch) = client_size(hwnd);
+                let rc = RECT {
+                    left: 0,
+                    top: 0,
+                    right: cw,
+                    bottom: ch,
+                };
+                let snap = crate::monitor::snapshot();
+                with_gui(|g| {
+                    let lang = g.lang.clone();
+                    theme::paint_monitor(
+                        hdc,
+                        rc,
+                        &snap,
+                        g.font,
+                        g.font_bold,
+                        &|k| crate::i18n::t(&lang, k),
+                    );
+                });
+                unsafe {
+                    EndPaint(hwnd, &ps as *const PAINTSTRUCT as *const std::ffi::c_void);
                 }
                 return 0;
             }
@@ -564,10 +598,16 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                     if g.auto_hwnd == hwnd {
                         g.auto_hwnd = 0;
                         g.auto_fields.clear();
+                    }
                     // 显存估算窗口：X 关闭也要清句柄，否则再次点“显存估算”打不开
                     if g.fit_hwnd == hwnd {
                         g.fit_hwnd = 0;
                     }
+                    // 数据监控窗口：关闭即停止采集线程，省掉后台轮询
+                    if g.mon_hwnd == hwnd {
+                        g.mon_hwnd = 0;
+                        MON_HWND.store(0, Ordering::Relaxed);
+                        crate::monitor::stop();
                     }
                 });
                 DestroyWindow(hwnd);

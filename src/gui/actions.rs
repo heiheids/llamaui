@@ -55,6 +55,11 @@ pub fn on_command(g: &mut Gui, hwnd: HWND, id: usize, code: u32) {
                 open_advanced(g);
             }
         }
+        ID_MONITOR => {
+            if code == 0 {
+                open_monitor_window(g);
+            }
+        }
         ID_SAVE => {
             if code == 0 {
                 save_config(g, hwnd);
@@ -248,6 +253,10 @@ pub fn on_command(g: &mut Gui, hwnd: HWND, id: usize, code: u32) {
 }
 
 pub fn on_tick(g: &mut Gui) {
+    // 监控窗口开着时才同步采集上下文并刷新
+    if g.mon_hwnd != 0 {
+        sync_monitor(g);
+    }
     // 后台翻译完成时刷新解读窗口
     poll_translate(g);
     // 服务空闲时按需自动生成中文解读（默认关闭，见高级设置）
@@ -3047,6 +3056,83 @@ fn remove_scan_dir(g: &mut Gui, raw: &str) {
     }
     fill_scan_list(g);
     set_text(g.lbl_hint, &i18n(g, "hint.dirRemoved"));
+}
+
+// ---------------------------------------------------------------------------
+// 数据监控窗口
+// ---------------------------------------------------------------------------
+
+/// 把当前连接信息（端口 / 密钥 / 运行态 / 日志路径）同步给采集线程，
+/// 并让监控窗口重绘一次。主窗口每秒调用。
+fn sync_monitor(g: &mut Gui) {
+    let (port, key, running, model, engine, uptime, log_path, ctx_cfg, slots_cfg) =
+        match g.shared.lock() {
+            Ok(app) => {
+                let st = app.launcher.status_json(&app.store.cfg);
+                let name = app
+                    .lib
+                    .find(&app.store.selected_model())
+                    .map(|m| m.name.clone())
+                    .unwrap_or_default();
+                let keys = crate::settings::api_keys(&app.store.cfg);
+                (
+                    st.i("port", 0).max(0) as u16,
+                    keys.first().cloned().unwrap_or_default(),
+                    st.s("phase", "") == "running",
+                    name,
+                    crate::process::Launcher::engine_of(&app.store.cfg),
+                    st.i("uptime", 0).max(0) as u64,
+                    st.s("logPath", ""),
+                    app.store.cfg.i("launch.ctxSize", 0).max(0) as u64,
+                    app.store.cfg.i("launch.parallel", 1).max(1) as u32,
+                )
+            }
+            Err(_) => (
+                0,
+                String::new(),
+                false,
+                String::new(),
+                String::new(),
+                0,
+                String::new(),
+                0,
+                0,
+            ),
+        };
+    crate::monitor::update_ctx(port, &key, running, &log_path, ctx_cfg, slots_cfg);
+    crate::monitor::update_labels(&model, &engine, uptime);
+    if g.mon_hwnd != 0 && unsafe { IsWindow(g.mon_hwnd) } != 0 {
+        unsafe {
+            InvalidateRect(g.mon_hwnd, std::ptr::null(), 0);
+        }
+    }
+}
+
+fn open_monitor_window(g: &mut Gui) {
+    // 已经开着就前置，不重复建窗
+    if g.mon_hwnd != 0 {
+        if unsafe { IsWindow(g.mon_hwnd) } != 0 {
+            show(g.mon_hwnd, true);
+            sync_monitor(g);
+            return;
+        }
+        g.mon_hwnd = 0;
+    }
+    let title = format!("{} — {}", i18n(g, "button.monitor"), i18n(g, "app.title"));
+    // 标题栏 + 关闭按钮 + 可调大小
+    let style = 0x00C0_0000 | 0x0008_0000 | 0x0004_0000;
+    let hwnd = create_window(super::CLASS_NAME, &title, 0, style, 220, 100, 920, 640, 0, 0);
+    if hwnd == 0 {
+        return;
+    }
+    g.mon_hwnd = hwnd;
+    super::MON_HWND.store(hwnd as isize, std::sync::atomic::Ordering::Relaxed);
+    crate::monitor::start();
+    sync_monitor(g);
+    show(hwnd, true);
+    unsafe {
+        InvalidateRect(hwnd, std::ptr::null(), 1);
+    }
 }
 
 fn open_advanced(g: &mut Gui) {

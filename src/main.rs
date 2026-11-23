@@ -11,6 +11,7 @@ mod gui;
 mod i18n;
 mod json;
 mod models;
+mod monitor;
 mod paramhelp;
 mod paramspec;
 mod process;
