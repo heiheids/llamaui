@@ -303,7 +303,13 @@
     "ctxTooSmall": "Note: context size is only {cur} tokens (model supports up to {native}). Agent frameworks reserve ~1500 completion + 65536 compaction headroom, so a window below 67000 fails outright; set Context size to 131072.",
     "vramRisk": "⚠ VRAM is nearly full - risk of running out of memory: enable KV quantization (-ctk q8_0 -ctv q8_0) or use a KVMem engine"
   },
-  "help": {
+  "fit": {
+    "structMixed": "Architecture: {layers} layers, 1 full-attention layer per {interval} -> {kvl} KV layers, {heads} KV heads, K/V dim {dim}",
+    "structPlain": "Architecture: {layers} layers, all full attention -> {kvl} KV layers, {heads} KV heads, K/V dim {dim}",
+    "kvPerToken": "KV per token: {q8} KB (q8_0) / {f16} KB (f16)",
+    "kvAt128k": "KV at 128K context: {q8} GB (q8_0) / {f16} GB (f16)",
+    "calibrated": "Measured: {measured} GB at {ctx} context, the structural formula predicts {formula} GB (short by {diff} GB)"
+  },  "help": {
     "header": "These are the arguments this build will pass to llama-server, explained one by one.\r\nDescriptions are based on the official --help of the bundled llama.cpp (b12549). Lines starting with * are the flag and its value; the next two lines give the Chinese explanation and the official English text.\r\nScroll with the wheel or the scrollbar on the right to see every argument."
   },
   "monitor": {

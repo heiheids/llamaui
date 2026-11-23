@@ -143,12 +143,14 @@ pub fn estimate_cal(
         / 1e9;
 
     // ---- 计算缓冲 ----
-    // 经验值：FA 开启约 0.6~1.2 GB，关闭时随上下文增长更快
+    // 实测：计算缓冲几乎不随上下文增长，主要是固定的 CUDA 上下文 + 图缓冲
+    // （Qwen3.8-27B：8k 时约 0.34 GB，64k 时仍约 0.35 GB，多出来的全是 KV）。
+    // 原来按 0.55 + 0.55×(ctx/32k) 线性增长，128K 会多算 2~3 GB。
     let ctx_gb = ctx as f64 / 32768.0;
     let compute = if flash_attn {
-        0.55 + 0.55 * ctx_gb
+        0.35 + 0.10 * ctx_gb
     } else {
-        0.75 + 1.40 * ctx_gb
+        0.60 + 0.45 * ctx_gb
     };
 
     let extra = (extra_mb_per_token.max(0.0) * ctx as f64) / 1024.0;
@@ -360,4 +362,57 @@ pub fn profiles_cal(
         ));
     }
     out
+}
+/// 模型 KV 结构的摘要，给「显存估算」窗口底部作参考
+#[derive(Clone, Debug, Default)]
+pub struct StructureInfo {
+    /// 总层数
+    pub layers: u32,
+    /// 全注意力间隔（1 = 每层都是全注意力）
+    pub interval: u32,
+    /// 真正需要保存 KV 的层数
+    pub kv_layers: u32,
+    pub kv_heads: u32,
+    /// K / V 的维度
+    pub k_len: u32,
+    pub v_len: u32,
+}
+
+impl StructureInfo {
+    /// 每 token 的 KV 字节数
+    pub fn per_token_bytes(&self, elem: f64) -> f64 {
+        let dims = (self.k_len + self.v_len) as f64;
+        self.kv_layers as f64 * self.kv_heads as f64 * dims * elem
+    }
+    /// 给定上下文与 KV 精度时的 KV 占用（GB）
+    pub fn kv_gb(&self, ctx: u32, elem: f64) -> f64 {
+        self.per_token_bytes(elem) * ctx as f64 / 1e9
+    }
+}
+
+/// 从元数据提炼 KV 结构（窗口底部展示 + 估算共用同一套规则）
+pub fn structure(info: &GgufInfo) -> StructureInfo {
+    let layers = if info.block_count > 0 { info.block_count } else { 32 };
+    let interval = if info.full_attn_interval > 1 {
+        info.full_attn_interval
+    } else {
+        1
+    };
+    let kv_heads = if info.n_head_kv > 0 {
+        info.n_head_kv
+    } else if info.n_head > 0 {
+        (info.n_head / 8).max(1)
+    } else {
+        8
+    };
+    let k_len = if info.k_len > 0 { info.k_len } else { 128 };
+    let v_len = if info.v_len > 0 { info.v_len } else { k_len };
+    StructureInfo {
+        layers,
+        interval,
+        kv_layers: info.kv_layer_count(),
+        kv_heads,
+        k_len,
+        v_len,
+    }
 }

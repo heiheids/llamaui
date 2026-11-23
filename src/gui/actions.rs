@@ -1914,6 +1914,28 @@ fn open_fit_window(g: &mut Gui) {
     );
     set_font(list, g.font);
 
+    // 结构参考区：把「这个模型的 KV 怎么算出来的」直接摆在窗口里
+    let make_line = |g: &Gui| {
+        let h = create_window(
+            "STATIC",
+            "",
+            0,
+            WS_CHILD | WS_VISIBLE | 0x0080,
+            0,
+            0,
+            10,
+            10,
+            hwnd,
+            0,
+        );
+        set_font(h, g.font);
+        h
+    };
+    let struct1 = make_line(g);
+    let struct2 = make_line(g);
+    let struct3 = make_line(g);
+    let struct4 = make_line(g);
+
     let note = create_window(
         "STATIC",
         "",
@@ -1959,6 +1981,10 @@ fn open_fit_window(g: &mut Gui) {
         *c.borrow_mut() = Some(FitWin {
             info: info_lbl,
             list,
+            struct1,
+            struct2,
+            struct3,
+            struct4,
             note,
             apply,
             close,
@@ -1999,6 +2025,48 @@ fn build_fit_profiles(g: &Gui) -> Vec<crate::fit::Profile> {
     let extra = crate::vramcal::get(&g.selected_id)
         .map(|c| c.extra_mb_per_token)
         .unwrap_or(0.0);
+
+    // 底部结构参考区：把 KV 体积是怎么算出来的摆出来，方便用户核对
+    let st = crate::fit::structure(&info);
+    let kb = |elem: f64| st.per_token_bytes(elem) / 1024.0;
+    let gb = |elem: f64, c: u32| st.kv_gb(c, elem);
+    let line1 = if st.interval > 1 {
+        i18n(g, "fit.structMixed")
+            .replace("{layers}", &st.layers.to_string())
+            .replace("{interval}", &st.interval.to_string())
+            .replace("{kvl}", &st.kv_layers.to_string())
+            .replace("{heads}", &st.kv_heads.to_string())
+            .replace("{dim}", &(st.k_len + st.v_len).to_string())
+    } else {
+        i18n(g, "fit.structPlain")
+            .replace("{layers}", &st.layers.to_string())
+            .replace("{kvl}", &st.kv_layers.to_string())
+            .replace("{heads}", &st.kv_heads.to_string())
+            .replace("{dim}", &(st.k_len + st.v_len).to_string())
+    };
+    let line2 = i18n(g, "fit.kvPerToken")
+        .replace("{q8}", &format!("{:.1}", kb(34.0 / 32.0)))
+        .replace("{f16}", &format!("{:.1}", kb(2.0)));
+    let line3 = i18n(g, "fit.kvAt128k")
+        .replace("{q8}", &format!("{:.2}", gb(34.0 / 32.0, 131072)))
+        .replace("{f16}", &format!("{:.2}", gb(2.0, 131072)));
+    // 有实测校准时再补一行：直接报「实测 vs 公式」，比折算到每 token 更可信
+    let line4 = match crate::vramcal::get(&g.selected_id) {
+        Some(c) if c.sample_ctx > 0 => {
+            let measured_gb = c.sample_mb as f64 / 1024.0;
+            let formula_gb = measured_gb - (c.extra_mb_per_token * c.sample_ctx as f64) / 1024.0;
+            i18n(g, "fit.calibrated")
+                .replace("{ctx}", &c.sample_ctx.to_string())
+                .replace("{measured}", &format!("{:.1}", measured_gb))
+                .replace("{formula}", &format!("{:.1}", formula_gb))
+                .replace("{diff}", &format!("{:.1}", (measured_gb - formula_gb).max(0.0)))
+        }
+        _ => String::new(),
+    };
+    if let Ok(mut l) = fit_state().lock() {
+        l.struct_lines = vec![line1, line2, line3, line4];
+    }
+
     crate::fit::profiles_cal(&info, size, ctx, vram_total, extra)
 }
 
@@ -2010,6 +2078,16 @@ fn fill_fit_list(g: &mut Gui) {
         return;
     };
     let st = fit_state().lock().unwrap_or_else(|e| e.into_inner());
+    // 结构参考区：这个模型的 KV 体积是怎么算出来的
+    for (h, i) in [
+        (ctl.struct1, 0usize),
+        (ctl.struct2, 1),
+        (ctl.struct3, 2),
+        (ctl.struct4, 3),
+    ] {
+        let text = st.struct_lines.get(i).cloned().unwrap_or_default();
+        set_text(h, &text);
+    }
     list_reset(ctl.list);
     for p in st.profiles.iter() {
         let mark = if p.fits { "OK" } else { " X" };
@@ -2165,7 +2243,8 @@ pub fn min_window_size(g: &Gui, hwnd: HWND) -> Option<(i32, i32)> {
     Some((layout::s(w, k), layout::s(h, k)))
 }
 
-fn position_fit_window(g: &mut Gui, header: &str) {    let k = layout::scale(g.fit_hwnd);
+fn position_fit_window(g: &mut Gui, header: &str) {
+    let k = layout::scale(g.fit_hwnd);
     let sc = |v: i32| layout::s(v, k);
     let (cw, ch) = client_size(g.fit_hwnd);
     let Some(ctl) = FIT_WIN.with(|c| *c.borrow()) else {
@@ -2177,18 +2256,36 @@ fn position_fit_window(g: &mut Gui, header: &str) {    let k = layout::scale(g.f
     let margin = sc(16);
     let btn_h = sc(34);
     let btn_y = ch - sc(14) - btn_h;
-    let note_h = sc(36);
-    let note_y = btn_y - sc(10) - note_h;
+    let note_h = sc(20);
+    let note_y = btn_y - sc(8) - note_h;
+    // 结构参考区：四行文字 + 一条分隔线，说明这个模型的 KV 是怎么算出来的
+    let s_h = sc(19);
+    let s4_y = note_y - sc(8) - s_h;
+    let s3_y = s4_y - s_h;
+    let s2_y = s3_y - s_h;
+    let s1_y = s2_y - s_h;
+    let divider_y = s1_y - sc(7);
     let info_h = sc(20);
     let info_y = sc(12);
     let list_y = info_y + info_h + sc(10);
-    let list_h = (note_y - sc(10) - list_y).max(sc(60));
+    let list_h = (divider_y - sc(8) - list_y).max(sc(60));
 
     move_to(ctl.info, margin, info_y, cw - margin * 2, info_h);
     move_to(ctl.list, margin, list_y, cw - margin * 2, list_h);
+    move_to(ctl.struct1, margin, s1_y, cw - margin * 2, s_h);
+    move_to(ctl.struct2, margin, s2_y, cw - margin * 2, s_h);
+    move_to(ctl.struct3, margin, s3_y, cw - margin * 2, s_h);
+    move_to(ctl.struct4, margin, s4_y, cw - margin * 2, s_h);
     move_to(ctl.note, margin, note_y, cw - margin * 2, note_h);
     move_to(ctl.apply, cw - margin - sc(284), btn_y, sc(140), btn_h);
     move_to(ctl.close, cw - margin - sc(132), btn_y, sc(132), btn_h);
+
+    // 结构区上方画一条分隔线，视觉上从列表里分出来
+    unsafe {
+        let dc = GetDC(g.fit_hwnd);
+        theme::hline(dc, margin, divider_y, cw - margin);
+        ReleaseDC(g.fit_hwnd, dc);
+    }
 }
 
 /// 应用选中的配置
@@ -2253,6 +2350,14 @@ thread_local! {
 struct FitWin {
     info: HWND,
     list: HWND,
+    /// 结构参考区：层数 / 间隔 / 有效层 / 头数 / 维度
+    struct1: HWND,
+    /// 每 token KV
+    struct2: HWND,
+    /// 128K 时的 KV 占用
+    struct3: HWND,
+    /// 实测校准说明（无数据时隐藏）
+    struct4: HWND,
     note: HWND,
     apply: HWND,
     close: HWND,
@@ -2262,6 +2367,8 @@ struct FitWin {
 struct FitState {
     profiles: Vec<crate::fit::Profile>,
     selected: usize,
+    /// 底部结构参考区三行文字
+    struct_lines: Vec<String>,
 }
 
 static FIT_STATE: std::sync::OnceLock<std::sync::Mutex<FitState>> = std::sync::OnceLock::new();

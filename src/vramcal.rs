@@ -49,6 +49,11 @@ impl Fingerprint {
     }
 }
 
+/// 估算公式版本。公式一改，旧校准值就不再成立，必须重新测。
+/// 1 = 计算缓冲线性增长（0.55 + 0.55×ctx/32k）
+/// 2 = 计算缓冲近似固定（0.35 + 0.10×ctx/32k）
+const FORMULA_VERSION: i64 = 2;
+
 fn path() -> std::path::PathBuf {
     crate::util::data_dir().join("vram-calib.json")
 }
@@ -72,6 +77,10 @@ fn cell() -> &'static Mutex<Json> {
 pub fn get(model_id: &str) -> Option<Calib> {
     let j = cell().lock().ok()?;
     let o = j.get(model_id)?;
+    // 公式改过就用旧值没有意义，交给下次启动重新校准
+    if o.i("formula", 0) != FORMULA_VERSION {
+        return None;
+    }
     let extra = o.get("extraMbPerToken")?.as_f64()?;
     Some(Calib {
         extra_mb_per_token: extra,
@@ -102,6 +111,7 @@ pub fn put(model_id: &str, c: &Calib) {
     o.set("ncmoe", Json::Num(c.ncmoe as f64));
     o.set("vision", Json::Bool(c.vision));
     o.set("ts", Json::Num(c.ts as f64));
+    o.set("formula", Json::Num(FORMULA_VERSION as f64));
     j.set(model_id, o);
     let _ = std::fs::write(path(), j.to_pretty());
 }
