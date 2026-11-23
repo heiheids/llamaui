@@ -367,6 +367,11 @@ pub const WS_CHILD: u32 = 0x4000_0000;
 pub const WS_VISIBLE: u32 = 0x1000_0000;
 pub const WS_TABSTOP: u32 = 0x0001_0000;
 pub const WS_VSCROLL: u32 = 0x0020_0000;
+/// 滚轮与竖向滚动
+pub const WM_MOUSEWHEEL: u32 = 0x020A;
+pub const WM_VSCROLL: u32 = 0x0115;
+pub const SB_LINEUP: usize = 0;
+pub const SB_LINEDOWN: usize = 1;
 /// GetWindowLong 的样式索引
 pub const GWL_STYLE: i32 = -16;
 /// 系统垂直滚动条宽度

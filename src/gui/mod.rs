@@ -44,36 +44,56 @@ pub unsafe extern "system" fn edit_wnd_proc(
     wp: WPARAM,
     lp: LPARAM,
 ) -> LRESULT {
+    // 多行框为了外观统一没有显示滚动条，但 EDIT 没有 WS_VSCROLL 就不处理滚轮，
+    // 这里把滚轮事件转成滚动命令，保证鼠标仍能翻日志。
+    if msg == WM_MOUSEWHEEL {
+        let style = GetWindowLongPtrW(hwnd, -16) as u32;
+        if style & ES_MULTILINE != 0 && style & WS_VSCROLL == 0 {
+            let delta = ((wp >> 16) & 0xFFFF) as u16 as i16;
+            let cmd = if delta > 0 { SB_LINEUP } else { SB_LINEDOWN };
+            // 一格滚 3 行，接近系统默认手感
+            for _ in 0..3 {
+                unsafe {
+                    SendMessageW(hwnd, WM_VSCROLL, cmd, 0);
+                }
+            }
+            return 0;
+        }
+    }
+
     // 单行 EDIT 会把文字画在客户区顶部，30px 高的框里文字明显偏上，
     // 所以把客户区往下挪一点（底部不动），上方的内边距由父窗口刷成输入框底色。
     // 多行框保持上下对称的小内边距。
+    //
+    // 关键：先让系统按默认规则算出客户区（它会正确处理滚动条占位），
+    // 再在这个结果上做小幅内缩。自己从窗口矩形减滚动条宽度会把
+    // 滚动条算丢，右侧只剩一条空白。
     if msg == WM_NCCALCSIZE && wp != 0 {
-        let style = GetWindowLongPtrW(hwnd, -16) as u32; // GWL_STYLE
-        let multi = style & ES_MULTILINE != 0;
-        let k = layout::scale(hwnd);
         let p = &mut *(lp as *mut NCCALCSIZE_PARAMS);
+        let window_rect = p.rgrc[0];
+        let ret = DefWindowProcW(hwnd, msg, wp, lp);
         let r = &mut p.rgrc[0];
+        if r.right <= r.left || r.bottom <= r.top {
+            // 系统没有给出有效客户区时退回窗口矩形
+            *r = window_rect;
+        }
+        let style = GetWindowLongPtrW(hwnd, -16) as u32; // GWL_STYLE
+        let k = layout::scale(hwnd);
         let pad_x = layout::s(1, k);
         r.left += pad_x;
         r.right -= pad_x;
-        if multi {
+        if style & ES_MULTILINE != 0 {
             let pad_v = layout::s(3, k);
             r.top += pad_v;
             r.bottom -= pad_v;
         } else {
             // 只缩顶部，让文字落到框的垂直中间
             r.top += layout::s(6, k);
-            r.bottom -= layout::s(0, k);
-        }
-        // 带垂直滚动条时必须把滚动条那一条留出来
-        if style & WS_VSCROLL != 0 {
-            let sbw = GetSystemMetrics(SM_CXVSCROLL);
-            r.right -= layout::s(sbw.max(12), k);
         }
         if r.bottom < r.top {
             r.bottom = r.top;
         }
-        return 0;
+        return ret;
     }
     let old = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
     if old == 0 {

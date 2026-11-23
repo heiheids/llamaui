@@ -408,7 +408,7 @@ pub fn build(shared: Shared, hwnd: HWND) {
             "EDIT",
             "",
             0,
-            WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
+            WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
             0,
             0,
             10,
@@ -471,7 +471,7 @@ pub fn build(shared: Shared, hwnd: HWND) {
             "EDIT",
             "",
             0,
-            WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
+            WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
             0,
             0,
             10,
@@ -709,8 +709,8 @@ pub fn position_all(g: &mut Gui) {
     move_to(g.btn_start, w(16), h(524), w(300), h(CTL_H));
     move_to(g.btn_stop, w(16), h(566), w(300), h(CTL_H));
     move_to(g.lbl_args, w(16), h(608), w(104), h(18));
-    move_to(g.btn_param_help, w(122), h(602), w(92), h(CTL_H));
-    move_to(g.btn_estimate, w(220), h(602), w(96), h(CTL_H));
+    move_to(g.btn_param_help, w(122), h(599), w(92), h(CTL_H));
+    move_to(g.btn_estimate, w(220), h(599), w(96), h(CTL_H));
     move_to(g.args_view, w(16), h(630), w(300), h(242));
 
     // ---- 右侧：三列网格 ----
