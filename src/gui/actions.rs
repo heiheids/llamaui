@@ -80,6 +80,11 @@ pub fn on_command(g: &mut Gui, hwnd: HWND, id: usize, code: u32) {
                 copy_key(g);
             }
         }
+        ID_COPY_LOCAL => {
+            if code == 0 {
+                copy_local_url(g);
+            }
+        }
         ID_LANG => {
             // CBN_SELCHANGE = 1
             if code == 1 {
@@ -844,6 +849,19 @@ fn copy_key(g: &mut Gui) {
 }
 
 /// 对外接口地址：优先局域网 IP（开放局域网时），否则本机地址
+/// 本机地址（固定 127.0.0.1），给只在本机跑客户端的场景用
+pub fn local_url(g: &Gui) -> String {
+    let c = cfg(g);
+    let port = c.i("network.port", 9931);
+    format!("http://127.0.0.1:{}/v1", port)
+}
+
+fn copy_local_url(g: &mut Gui) {
+    let url = local_url(g);
+    set_clipboard_text(g.hwnd, &url);
+    set_text(g.lbl_hint, &format!("{} {}", i18n(g, "status.copied"), url));
+}
+
 pub fn endpoint_url(g: &Gui) -> String {
     let c = cfg(g);
     let port = c.i("network.port", 9931);

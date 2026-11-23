@@ -176,6 +176,7 @@ pub struct Gui {
     pub btn_newkey: HWND,
     pub btn_copy_ep: HWND,
     pub btn_copy_key: HWND,
+    pub btn_copy_local: HWND,
     pub lang_combo: HWND,
 
     pub lbl_models: HWND,

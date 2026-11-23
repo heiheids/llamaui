@@ -58,6 +58,7 @@
     "back": "返回",
     "newKey": "生成新密钥",
     "copy": "复制",
+    "copyLocal": "复制本机地址",
     "refresh": "刷新",
     "remove": "移除",
     "clearLog": "清空日志",

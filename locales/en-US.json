@@ -57,6 +57,7 @@
     "back": "Back",
     "newKey": "New key",
     "copy": "Copy",
+    "copyLocal": "Copy local address",
     "refresh": "Refresh",
     "remove": "Remove",
     "clearLog": "Clear log",

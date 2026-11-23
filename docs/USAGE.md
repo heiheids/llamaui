@@ -78,7 +78,7 @@ the models in the same folder.
 | **Enable Jinja template** | Recommended; without it tool calls and thinking mode may not work |
 | **Allow LAN access** | Listens on `0.0.0.0`; the top bar then shows the LAN URL and can copy it |
 | **Require API key** | Requests must send `Authorization: Bearer <key>` |
-| **Custom bind address / port** | Defaults `127.0.0.1` / `9931` |
+| **Custom bind address / port** | Defaults `127.0.0.1` / `9931`. **Copy local address** next to it copies `http://127.0.0.1:<port>/v1` |
 | **API keys** | One per line, the first is used. Buttons: **Copy**, **New key** |
 
 The hint line under the form shows where the context value came from (auto-following the

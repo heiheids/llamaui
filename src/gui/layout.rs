@@ -21,6 +21,8 @@ pub const ID_NEWKEY: usize = 109;
 pub const ID_LANG: usize = 110;
 pub const ID_COPY_EP: usize = 111;
 pub const ID_COPY_KEY: usize = 112;
+/// 复制本机地址（127.0.0.1）
+pub const ID_COPY_LOCAL: usize = 113;
 pub const ID_LOG_CLEAR: usize = 400;
 pub const ID_LLAMA_DL: usize = 401;
 #[allow(dead_code)]
@@ -269,6 +271,7 @@ pub fn build(shared: Shared, hwnd: HWND) {
         btn_newkey: 0,
         btn_copy_ep: 0,
         btn_copy_key: 0,
+        btn_copy_local: 0,
         lang_combo: 0,
         lbl_models: 0,
         lbl_common: 0,
@@ -430,6 +433,7 @@ pub fn build(shared: Shared, hwnd: HWND) {
         g.btn_save = make_button(g, "", ID_SAVE);
         g.btn_newkey = make_button(g, "", ID_NEWKEY);
         g.btn_copy_key = make_button(g, "", ID_COPY_KEY);
+        g.btn_copy_local = make_button(g, "", ID_COPY_LOCAL);
 
         // 启动时探测本机实际装了哪些推理引擎；没装的就不出现在下拉框里。
         // 结果借成 'static 切片，Ctl.options 的类型不用改。
@@ -616,6 +620,7 @@ pub fn apply_language(g: &mut Gui) {
     set_text(g.btn_save, &i18n(g, "button.save"));
     set_text(g.btn_newkey, &i18n(g, "button.newKey"));
     set_text(g.btn_copy_ep, &i18n(g, "button.copy"));
+    set_text(g.btn_copy_local, &i18n(g, "button.copyLocal"));
     set_text(g.btn_copy_key, &i18n(g, "button.copy"));
     set_text(g.btn_log_clear, &i18n(g, "button.clearLog"));
     set_text(g.btn_llama_dl, &i18n(g, "button.llamaDownload"));
@@ -781,6 +786,14 @@ pub fn position_all(g: &mut Gui) {
         let cx = X0 + (i as i32) * (COL_W + GAP);
         place_field(ctl, cx, y, COL_W, k);
     }
+    // 「复制本机地址」放在第三列，与服务端口输入框同一行
+    move_to(
+        g.btn_copy_local,
+        w(X0 + 2 * (COL_W + GAP)),
+        h(y + 22),
+        w(120),
+        h(CTL_H),
+    );
     y += ROW_H;
 
     // 密钥：紧跟自定义地址下方，复制 / 生成新密钥按钮等高对齐
