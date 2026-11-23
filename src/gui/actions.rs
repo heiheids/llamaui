@@ -3415,7 +3415,7 @@ fn open_advanced(g: &mut Gui) {
         "BUTTON",
         &i18n(g, "button.browse"),
         0,
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPSIBLINGS | BS_OWNERDRAW,
         0,
         0,
         10,
@@ -3430,7 +3430,7 @@ fn open_advanced(g: &mut Gui) {
         "STATIC",
         &i18n(g, "label.scanDirs"),
         0,
-        WS_CHILD | WS_VISIBLE | 0x0080,
+        WS_CHILD | WS_VISIBLE | 0x0080 | WS_CLIPSIBLINGS,
         0,
         0,
         10,
@@ -3446,6 +3446,7 @@ fn open_advanced(g: &mut Gui) {
         WS_CHILD
             | WS_VISIBLE
             | WS_TABSTOP
+            | WS_CLIPSIBLINGS
             | WS_VSCROLL
             | WS_BORDER
             | 0x0020_0000
@@ -3470,7 +3471,7 @@ fn open_advanced(g: &mut Gui) {
         "STATIC",
         &format!("{} {}", i18n(g, "label.autoParams"), auto_total),
         0,
-        WS_CHILD | WS_VISIBLE | 0x0080,
+        WS_CHILD | WS_VISIBLE | 0x0080 | WS_CLIPSIBLINGS,
         0,
         0,
         10,
@@ -3483,7 +3484,7 @@ fn open_advanced(g: &mut Gui) {
         "BUTTON",
         &i18n(g, "button.autoSettings"),
         0,
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPSIBLINGS | BS_OWNERDRAW,
         0,
         0,
         10,
@@ -3513,7 +3514,7 @@ fn open_advanced(g: &mut Gui) {
             SetWindowPos(h, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
     }
-    fit_window_to_screen(hwnd, 1060, 900);
+    fit_window_to_screen(hwnd, 1060, 980);
     position_advanced(g);
     populate_advanced(g);
     show(hwnd, true);
@@ -3532,7 +3533,8 @@ fn create_adv_field(
         Kind::Select => "COMBOBOX",
         _ => "EDIT",
     };
-    let mut style = WS_CHILD | WS_VISIBLE | WS_TABSTOP;
+    // WS_CLIPSIBLINGS：滚动时控件不能画到固定的底部按钮条上面
+    let mut style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPSIBLINGS;
     style |= match kind {
         Kind::Bool => BS_AUTOCHECKBOX,
         Kind::Select => CBS_DROPDOWNLIST | CBS_HASSTRINGS | WS_VSCROLL,
@@ -3555,7 +3557,7 @@ fn create_adv_field(
         "STATIC",
         &text,
         0,
-        WS_CHILD | WS_VISIBLE | 0x0080,
+        WS_CHILD | WS_VISIBLE | 0x0080 | WS_CLIPSIBLINGS,
         0,
         0,
         10,
@@ -3618,17 +3620,12 @@ fn position_advanced(g: &mut Gui) {
         cy
     };
 
-    // ---- 先压缩行距尽量塞进可视区，塞不下就开竖向滚动 ----
-    let mut row_h = 42;
-    let mut ml_h = 56;
-    let mut list_h = 60;
-    while row_h > 30 && sc(content_bottom(row_h, ml_h, list_h)) > view_bottom {
-        row_h -= 2;
-    }
-    if sc(content_bottom(row_h, ml_h, list_h)) > view_bottom {
-        ml_h = 44;
-        list_h = 42;
-    }
+    // ---- 固定用宽松尺寸，靠竖向滚动条容纳超出的内容 ----
+    // 之前会在放不下时压缩行距和多行框高度，结果文字与输入框挤在一起、
+    // 也显示不全。现在不再压缩：需要多高就按多高排，滚动查看。
+    let row_h = 42;
+    let ml_h = 56;
+    let list_h = 60;
     let need = sc(content_bottom(row_h, ml_h, list_h));
     let max_scroll = (((need - view_bottom) as f32) / k.max(0.1)).round() as i32;
     let max_scroll = max_scroll.max(0);
