@@ -1730,9 +1730,12 @@ fn check_vram_risk(g: &mut Gui) {
         Err(_) => false,
     };
     let s = crate::sysinfo::sample();
+    // 90% 就提醒：Windows 的 WDDM 到 100% 不会报错，而是把显存换页到内存，
+    // 表现是速度骤降而不是崩溃，等察觉就晚了。留 10% 给桌面和其它程序。
+    const VRAM_WARN_RATIO: f64 = 0.90;
     let risk = running
         && s.vram_total_mb > 0
-        && s.vram_used_mb as f64 / s.vram_total_mb as f64 >= 0.95;
+        && s.vram_used_mb as f64 / s.vram_total_mb as f64 >= VRAM_WARN_RATIO;
     if risk {
         let msg = i18n(g, "warn.vramRisk");
         set_text(g.lbl_warn, &msg);
