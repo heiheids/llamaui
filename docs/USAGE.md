@@ -185,7 +185,9 @@ Parameters llamaUI already knows never appear here.
 
 ## 8. Advanced settings
 
-Opened from the header. Large window, three columns.
+Opened from the header. Three columns; the window **can be resized by dragging its edges**.
+When the content does not fit, a scrollbar appears and **Back / Save** stay pinned to the bottom
+edge, so they remain clickable at any screen size.
 
 ### Generation
 

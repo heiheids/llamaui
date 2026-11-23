@@ -35,6 +35,7 @@ pub struct WNDCLASSEXW {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Default)]
 pub struct POINT {
     pub x: i32,
     pub y: i32,
@@ -58,6 +59,17 @@ pub struct RECT {
     pub top: i32,
     pub right: i32,
     pub bottom: i32,
+}
+
+/// WM_GETMINMAXINFO 用到的最小/最大跟踪尺寸
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct MINMAXINFO {
+    pub pt_reserved: POINT,
+    pub pt_max_size: POINT,
+    pub pt_max_position: POINT,
+    pub pt_min_track_size: POINT,
+    pub pt_max_track_size: POINT,
 }
 
 #[repr(C)]
@@ -131,6 +143,15 @@ extern "system" {
         flags: u32,
     ) -> i32;
     pub fn GetClientRect(hwnd: HWND, rect: *mut RECT) -> i32;
+    pub fn SetScrollRange(hwnd: HWND, bar: i32, min: i32, max: i32, redraw: i32) -> i32;
+    pub fn SetScrollPos(hwnd: HWND, bar: i32, pos: i32, redraw: i32) -> i32;
+    pub fn GetScrollPos(hwnd: HWND, bar: i32) -> i32;
+    pub fn SystemParametersInfoW(
+        action: u32,
+        param: u32,
+        pv: *mut core::ffi::c_void,
+        win_ini: u32,
+    ) -> i32;
     pub fn LoadCursorW(instance: HINSTANCE, name: *const u16) -> isize;
     pub fn LoadIconW(instance: HINSTANCE, name: *const u16) -> HICON;
     pub fn MessageBoxW(hwnd: HWND, text: *const u16, caption: *const u16, flags: u32) -> i32;
@@ -371,8 +392,20 @@ pub const WS_CHILD: u32 = 0x4000_0000;
 pub const WS_VISIBLE: u32 = 0x1000_0000;
 pub const WS_TABSTOP: u32 = 0x0001_0000;
 pub const WS_VSCROLL: u32 = 0x0020_0000;
+/// 重绘时裁掉被上层同级控件遮住的部分（否则自绘底板会盖住按钮）
+pub const WS_CLIPSIBLINGS: u32 = 0x0400_0000;
 /// BitBlt 光栅操作：直接拷贝
 pub const SRCCOPY: u32 = 0x00CC_0020;
+/// SetWindowPos 标志
+pub const SWP_NOSIZE: u32 = 0x0001;
+pub const SWP_NOMOVE: u32 = 0x0002;
+pub const SWP_NOZORDER: u32 = 0x0004;
+pub const SWP_NOACTIVATE: u32 = 0x0010;
+/// 滚动条标识
+pub const SB_VERT: i32 = 1;
+pub const SB_HORZ: i32 = 0;
+/// SystemParametersInfo：读取屏幕可用工作区
+pub const SPI_GETWORKAREA: u32 = 0x0030;
 /// 滚轮与竖向滚动
 pub const WM_MOUSEWHEEL: u32 = 0x020A;
 pub const WM_VSCROLL: u32 = 0x0115;
@@ -405,6 +438,7 @@ pub const WM_DESTROY: u32 = 0x0002;
 pub const WM_SIZE: u32 = 0x0005;
 pub const WM_CLOSE: u32 = 0x0010;
 pub const WM_COMMAND: u32 = 0x0111;
+pub const WM_GETMINMAXINFO: u32 = 0x0024;
 pub const WM_TIMER: u32 = 0x0113;
 pub const WM_CTLCOLORSTATIC: u32 = 0x0138;
 pub const WM_CTLCOLORBTN: u32 = 0x0135;

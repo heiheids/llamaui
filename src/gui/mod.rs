@@ -207,6 +207,10 @@ pub struct Gui {
     /// 「显存估算」按钮与窗口
     pub btn_estimate: HWND,
     pub mon_hwnd: HWND,
+    /// 高级设置窗口底部按钮条的遮挡底板
+    pub adv_footer: HWND,
+    /// 高级设置窗口的竖向滚动位置（逻辑像素）
+    pub adv_scroll: i32,
     pub fit_hwnd: HWND,
     /// 已经就显存风险写过日志（避免刷屏）
     pub vram_warned: bool,
@@ -214,6 +218,8 @@ pub struct Gui {
     /// 参数解读窗口里的文本控件与「生成中文解读」按钮
     pub help_view: HWND,
     pub btn_help_translate: HWND,
+    /// 参数解读窗口的关闭按钮（布局自适应用）
+    pub btn_help_close: HWND,
     /// 高级设置里「自动发现的新参数」控件
     pub auto_fields: Vec<AutoCtl>,
     /// 该分区的标题标签
@@ -379,6 +385,41 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                 with_gui(|g| actions::on_tick(g));
             }
             0
+        }
+        // 高级设置窗口的滚动
+        WM_VSCROLL => {
+            let mut handled = false;
+            with_gui(|g| handled = actions::on_adv_scroll(g, hwnd, wp, false));
+            if handled { 0 } else { DefWindowProcW(hwnd, msg, wp, lp) }
+        }
+        WM_MOUSEWHEEL => {
+            let mut handled = false;
+            with_gui(|g| handled = actions::on_adv_scroll(g, hwnd, wp, true));
+            if handled { 0 } else { DefWindowProcW(hwnd, msg, wp, lp) }
+        }
+        // 二级窗口允许拖动改变大小：尺寸一变就按新客户区重新排布，
+        // 保证底部按钮始终贴着窗口下沿，不会被挤出可见区域
+        WM_SIZE => {
+            with_gui(|g| actions::on_window_resize(g, hwnd));
+            0
+        }
+        // 限制最小尺寸，避免拖到过小导致控件互相覆盖
+        WM_GETMINMAXINFO => {
+            if hwnd != MAIN_HWND.load(Ordering::Relaxed) {
+                let mmi = lp as *mut MINMAXINFO;
+                if !mmi.is_null() {
+                    with_gui(|g| {
+                        if let Some((w, h)) = actions::min_window_size(g, hwnd) {
+                            unsafe {
+                                (*mmi).pt_min_track_size.x = w;
+                                (*mmi).pt_min_track_size.y = h;
+                            }
+                        }
+                    });
+                    return 0;
+                }
+            }
+            DefWindowProcW(hwnd, msg, wp, lp)
         }
         // 顶栏“当前模型”由父窗口自绘（可滚动），其余交给默认处理
         WM_PAINT => {

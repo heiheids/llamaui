@@ -1831,7 +1831,8 @@ fn open_fit_window(g: &mut Gui) {
         g.fit_hwnd = 0;
     }
     let title = format!("{} — {}", i18n(g, "button.estimate"), i18n(g, "app.title"));
-    let style = 0x00C0_0000 | 0x0008_0000;
+    // 带可调边框，用户可以拖动改变大小
+    let style = 0x00C0_0000 | 0x0008_0000 | 0x0004_0000;
     let hwnd = create_window(super::CLASS_NAME, &title, 0, style, 200, 90, 980, 620, 0, 0);
     if hwnd == 0 {
         return;
@@ -1926,6 +1927,7 @@ fn open_fit_window(g: &mut Gui) {
         l.selected = 0;
     }
     fill_fit_list(g);
+    fit_window_to_screen(hwnd, 980, 560);
     position_fit_window(g, &format!("{} · {} · {:.1}/{:.1} GB", gpu_name, i18n(g, "label.vram"), vram_used, vram_total));
     show(hwnd, true);
 }
@@ -1985,19 +1987,157 @@ fn fill_fit_list(g: &mut Gui) {
     }
 }
 
-fn position_fit_window(g: &mut Gui, header: &str) {
-    let k = layout::scale(g.fit_hwnd);
+// ---------------------------------------------------------------------------
+// 二级窗口通用：按屏幕工作区自适应 + 支持拖动改变大小
+// ---------------------------------------------------------------------------
+
+/// 屏幕可用工作区（不含任务栏）
+fn work_area() -> (i32, i32, i32, i32) {
+    let mut r = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
+    let ok = unsafe {
+        SystemParametersInfoW(
+            SPI_GETWORKAREA,
+            0,
+            &mut r as *mut RECT as *mut core::ffi::c_void,
+            0,
+        )
+    };
+    if ok == 0 || r.right <= r.left || r.bottom <= r.top {
+        // 读不到就退回一个保守值，保证按钮不会跑到屏幕外
+        return (0, 0, 1280, 800);
+    }
+    (r.left, r.top, r.right - r.left, r.bottom - r.top)
+}
+
+/// 把窗口初始尺寸按 DPI 缩放，并夹到屏幕工作区内并居中。
+/// 这一步是小屏 / 高 DPI 机器上「底部按钮看不见」的根本修复：
+/// 原来窗口尺寸是写死的物理像素，而布局会按 DPI 放大，两者对不上。
+fn fit_window_to_screen(hwnd: HWND, want_w: i32, want_h: i32) {
+    let k = layout::scale(hwnd);
     let sc = |v: i32| layout::s(v, k);
-    let (cw, _ch) = client_size(g.fit_hwnd);
+    let (ox, oy, sw, sh) = work_area();
+    let mut w = sc(want_w);
+    let mut h = sc(want_h);
+    let max_w = sw - sc(40);
+    let max_h = sh - sc(80);
+    if w > max_w {
+        w = max_w;
+    }
+    if h > max_h {
+        h = max_h;
+    }
+    let x = ox + ((sw - w) / 2).max(0);
+    let y = oy + ((sh - h) / 2 - sc(16)).max(0);
+    unsafe {
+        SetWindowPos(hwnd, 0, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+}
+
+/// 二级窗口尺寸变化后重排控件；主窗口不参与（布局是固定设计稿）
+/// 高级设置窗口的竖向滚动（滚轮 / 滚动条）
+pub fn on_adv_scroll(g: &mut Gui, hwnd: HWND, wp: usize, mouse: bool) -> bool {
+    if hwnd != g.adv_hwnd || hwnd == 0 {
+        return false;
+    }
+    let k = layout::scale(hwnd);
+    let sc = |v: i32| layout::s(v, k);
+    let step = if mouse { sc(60) } else { sc(32) };
+    let code = if mouse {
+        // 滚轮：wp 高字是有符号的滚动量
+        let delta = ((wp >> 16) & 0xFFFF) as i16;
+        if delta > 0 { -3 } else { 3 }
+    } else {
+        match wp & 0xFFFF {
+            0 => -1,               // SB_LINEUP
+            1 => 1,                // SB_LINEDOWN
+            2 => -4,               // SB_PAGEUP
+            3 => 4,                // SB_PAGEDOWN
+            4 | 5 => {             // SB_THUMBPOSITION / SB_THUMBTRACK
+                let pos = ((wp >> 16) & 0xFFFF) as i32;
+                let old = g.adv_scroll;
+                g.adv_scroll = pos;
+                if old != g.adv_scroll {
+                    position_advanced(g);
+                }
+                return true;
+            }
+            _ => 0,
+        }
+    };
+    if code == 0 {
+        return false;
+    }
+    let ratio = if mouse {
+        (sc(60) as f32 / k.max(0.1)).round() as i32 / 2
+    } else {
+        32
+    };
+    g.adv_scroll += code * ratio.max(1);
+    if g.adv_scroll < 0 {
+        g.adv_scroll = 0;
+    }
+    position_advanced(g);
+    true
+}
+
+pub fn on_window_resize(g: &mut Gui, hwnd: HWND) {
+    if hwnd == g.hwnd {
+        return;
+    }
+    if hwnd == g.fit_hwnd {
+        let header = FIT_WIN.with(|c| c.borrow().map(|c| get_text(c.info)).unwrap_or_default());
+        position_fit_window(g, &header);
+    } else if hwnd == g.help_hwnd {
+        position_help_window(g);
+    } else if hwnd == g.adv_hwnd {
+        position_advanced(g);
+    }
+}
+
+/// 各二级窗口的最小尺寸（逻辑像素），WM_GETMINMAXINFO 用
+pub fn min_window_size(g: &Gui, hwnd: HWND) -> Option<(i32, i32)> {
+    let (w, h) = if hwnd == g.fit_hwnd {
+        (560, 340)
+    } else if hwnd == g.help_hwnd {
+        (520, 360)
+    } else if hwnd == g.adv_hwnd {
+        (760, 420)
+    } else {
+        return None;
+    };
+    let k = layout::scale(hwnd);
+    Some((layout::s(w, k), layout::s(h, k)))
+}
+
+fn position_fit_window(g: &mut Gui, header: &str) {    let k = layout::scale(g.fit_hwnd);
+    let sc = |v: i32| layout::s(v, k);
+    let (cw, ch) = client_size(g.fit_hwnd);
     let Some(ctl) = FIT_WIN.with(|c| *c.borrow()) else {
         return;
     };
     set_text(ctl.info, header);
-    move_to(ctl.info, sc(16), sc(12), sc(cw - sc(32)), sc(20));
-    move_to(ctl.list, sc(16), sc(38), sc(cw - sc(32)), sc(420));
-    move_to(ctl.note, sc(16), sc(466), sc(cw - sc(32)), sc(36));
-    move_to(ctl.apply, sc(cw - sc(300)), sc(510), sc(140), sc(34));
-    move_to(ctl.close, sc(cw - sc(150)), sc(510), sc(120), sc(34));
+
+    // 底部按钮锚定在客户区下沿：窗口再小也点得到
+    let margin = sc(16);
+    let btn_h = sc(34);
+    let btn_y = ch - sc(14) - btn_h;
+    let note_h = sc(36);
+    let note_y = btn_y - sc(10) - note_h;
+    let info_h = sc(20);
+    let info_y = sc(12);
+    let list_y = info_y + info_h + sc(10);
+    let list_h = (note_y - sc(10) - list_y).max(sc(60));
+
+    move_to(ctl.info, margin, info_y, cw - margin * 2, info_h);
+    move_to(ctl.list, margin, list_y, cw - margin * 2, list_h);
+    move_to(ctl.note, margin, note_y, cw - margin * 2, note_h);
+    move_to(ctl.apply, cw - margin - sc(284), btn_y, sc(140), btn_h);
+    move_to(ctl.close, cw - margin - sc(132), btn_y, sc(132), btn_h);
 }
 
 /// 应用选中的配置
@@ -2085,7 +2225,8 @@ fn open_param_help(g: &mut Gui) {
         return;
     }
     let title = format!("{} — {}", i18n(g, "button.paramHelp"), i18n(g, "app.title"));
-    let style = 0x00C0_0000 | 0x0008_0000;
+    // 带可调边框，用户可以拖动改变大小
+    let style = 0x00C0_0000 | 0x0008_0000 | 0x0004_0000;
     let hwnd = create_window(super::CLASS_NAME, &title, 0, style, 180, 90, 920, 720, 0, 0);
     if hwnd == 0 {
         return;
@@ -2121,6 +2262,7 @@ fn open_param_help(g: &mut Gui) {
         ID_HELP_CLOSE,
     );
     set_font(btn, g.font);
+    g.btn_help_close = btn;
 
     g.btn_help_translate = create_window(
         "BUTTON",
@@ -2138,12 +2280,35 @@ fn open_param_help(g: &mut Gui) {
 
     set_text(view, &build_param_help_text(g));
 
-    let k = layout::scale(hwnd);
-    let sc = |v: i32| layout::s(v, k);
-    move_to(view, sc(14), sc(12), sc(876), sc(620));
-    move_to(btn, sc(778), sc(644), sc(112), sc(34));
-    move_to(g.btn_help_translate, sc(560), sc(644), sc(150), sc(34));
+    fit_window_to_screen(hwnd, 920, 700);
+    position_help_window(g);
     show(hwnd, true);
+}
+
+/// 参数解读窗口的自适应布局：文本框占满上方，按钮贴底
+fn position_help_window(g: &mut Gui) {
+    if g.help_hwnd == 0 || unsafe { IsWindow(g.help_hwnd) } == 0 {
+        return;
+    }
+    let k = layout::scale(g.help_hwnd);
+    let sc = |v: i32| layout::s(v, k);
+    let (cw, ch) = client_size(g.help_hwnd);
+
+    let margin = sc(14);
+    let btn_h = sc(34);
+    let btn_y = ch - sc(12) - btn_h;
+    let view_y = sc(12);
+    let view_h = (btn_y - sc(10) - view_y).max(sc(120));
+
+    move_to(g.help_view, margin, view_y, cw - margin * 2, view_h);
+    move_to(g.btn_help_translate, cw - margin - sc(112) - sc(8) - sc(150), btn_y, sc(150), btn_h);
+    move_to(
+        g.btn_help_close,
+        cw - margin - sc(112),
+        btn_y,
+        sc(112),
+        btn_h,
+    );
 }
 
 // ---------------- 参数解读：本地模型翻译 ----------------
@@ -3159,7 +3324,8 @@ fn open_advanced(g: &mut Gui) {
         return;
     }
     let title = format!("{} — {}", i18n(g, "section.advanced"), i18n(g, "app.title"));
-    let style = 0x00C0_0000 | 0x0008_0000;
+    // 带可调边框 + 竖向滚动条：小屏上内容放不下时可以滚动，底部按钮始终可见
+    let style = 0x00C0_0000 | 0x0008_0000 | 0x0004_0000 | WS_VSCROLL;
     let hwnd = create_window(super::CLASS_NAME, &title, 0, style, 150, 30, 1060, 950, 0, 0);
     if hwnd == 0 {
         return;
@@ -3199,6 +3365,23 @@ fn open_advanced(g: &mut Gui) {
         });
     }
     g.adv_fields = ctl_list;
+
+    // 底部按钮条的遮挡底板：内容滚动时会经过按钮下方，
+    // 用一块与页面同色的 STATIC 压在上面，看起来才干净。
+    // 必须在按钮之前创建，z 序才会落在按钮下方。
+    g.adv_footer = create_window(
+        "STATIC",
+        "",
+        0,
+        WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
+        0,
+        0,
+        10,
+        10,
+        hwnd,
+        0,
+    );
+    set_font(g.adv_footer, g.font);
 
     g.btn_adv_save = create_window(
         "BUTTON",
@@ -3314,6 +3497,23 @@ fn open_advanced(g: &mut Gui) {
         show(g.btn_auto, false);
     }
 
+    // z 序：内容 < 底部底板 < 两个按钮。
+    // 否则「设置…」这类后创建的控件会浮在底栏上面，滚动时很难看。
+    unsafe {
+        SetWindowPos(
+            g.adv_footer,
+            0,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+        for h in [g.btn_adv_save, g.btn_adv_close] {
+            SetWindowPos(h, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
+    }
+    fit_window_to_screen(hwnd, 1060, 900);
     position_advanced(g);
     populate_advanced(g);
     show(hwnd, true);
@@ -3368,21 +3568,28 @@ fn create_adv_field(
 }
 
 fn position_advanced(g: &mut Gui) {
-    let k = layout::scale(g.hwnd);
+    if g.adv_hwnd == 0 || unsafe { IsWindow(g.adv_hwnd) } == 0 {
+        return;
+    }
+    let k = layout::scale(g.adv_hwnd);
     let sc = |v: i32| layout::s(v, k);
     let x0 = 16;
-    let col_w = 330;
-    // 多行框（扫描目录、附加参数）固定占满整行，宽度按窗口客户区算
+    let margin = sc(16);
     let (cw, ch) = client_size(g.adv_hwnd);
-    let full_w = ((cw - sc(32)) / sc(1)).max(sc(400)) as i32;
+    // 列宽跟着窗口宽度走：窗口拉窄时三列自动收窄，不会被裁掉
+    let col_w = (((cw - margin * 2) - sc(16)) / 3).max(sc(190));
+    let full_w = (cw - margin * 2).max(sc(240));
 
-    // ---- 自适应压缩 ----
-    // 选项很多，按原来的行距排下来会顶出窗口底部（保存/关闭按钮都看不见）。
-    // 先按紧凑行距试算总高度，仍然放不下就把行距继续压，直到塞进客户区。
+    // 底部按钮固定在窗口下沿，任何尺寸下都点得到
+    let btn_h = sc(32);
+    let btn_y = ch - sc(12) - btn_h;
+    let view_bottom = btn_y - sc(10);
+
     let kinds: Vec<Kind> = g.adv_fields.iter().map(|c| c.kind).collect();
     let has_auto = crate::paramspec::auto_params().len() > 0;
-    // 给定行距/多行框高度/列表高度时，内容需要多高
-    let content_h = |row_h: i32, ml_h: i32, list_h: i32| -> i32 {
+
+    // 内容底部（不含底部按钮）
+    let content_bottom = |row_h: i32, ml_h: i32, list_h: i32| -> i32 {
         let mut cy = 10;
         let mut col = 0;
         for kind in kinds.iter() {
@@ -3408,56 +3615,70 @@ fn position_advanced(g: &mut Gui) {
         if has_auto {
             cy += 6 + 34;
         }
-        // 底部按钮
-        cy + 8 + 36 + 8
+        cy
     };
 
+    // ---- 先压缩行距尽量塞进可视区，塞不下就开竖向滚动 ----
     let mut row_h = 42;
     let mut ml_h = 56;
     let mut list_h = 60;
-    while content_h(row_h, ml_h, list_h) > ch - 8 && row_h > 34 {
+    while row_h > 30 && sc(content_bottom(row_h, ml_h, list_h)) > view_bottom {
         row_h -= 2;
     }
-    if content_h(row_h, ml_h, list_h) > ch - 8 {
+    if sc(content_bottom(row_h, ml_h, list_h)) > view_bottom {
         ml_h = 44;
         list_h = 42;
     }
+    let need = sc(content_bottom(row_h, ml_h, list_h));
+    let max_scroll = (((need - view_bottom) as f32) / k.max(0.1)).round() as i32;
+    let max_scroll = max_scroll.max(0);
+    if g.adv_scroll > max_scroll {
+        g.adv_scroll = max_scroll;
+    }
+    if g.adv_scroll < 0 {
+        g.adv_scroll = 0;
+    }
+    let off = sc(g.adv_scroll);
+    unsafe {
+        SetScrollRange(g.adv_hwnd, SB_VERT, 0, max_scroll, 1);
+        SetScrollPos(g.adv_hwnd, SB_VERT, g.adv_scroll, 1);
+    }
+    // 纵向位置：逻辑坐标 → 物理坐标再减去滚动偏移
+    let vy = |y: i32| sc(y) - off;
 
     let mut cx = x0;
     let mut cy = 10;
     let mut col = 0;
     for ctl in g.adv_fields.iter() {
         if ctl.kind == Kind::MultilineText {
-            // 多行框总是另起一行、占满整宽，避免拖出窗口
             if col != 0 {
                 col = 0;
                 cx = x0;
                 cy += row_h;
             }
-            move_to(ctl.label, sc(cx), sc(cy), sc(col_w), sc(17));
-            move_to(ctl.hwnd, sc(x0), sc(cy + 18), full_w, sc(ml_h));
+            move_to(ctl.label, sc(cx), vy(cy), sc(col_w), sc(17));
+            move_to(ctl.hwnd, sc(x0), vy(cy + 18), full_w, sc(ml_h));
             cy += 18 + ml_h + 6;
             continue;
         }
         // 勾选项：方框在前、文字在后，排在同一个格子里
         if ctl.kind == Kind::Bool {
-            move_to(ctl.hwnd, sc(cx), sc(cy + 1), sc(22), sc(22));
-            move_to(ctl.label, sc(cx + 24), sc(cy + 4), sc(col_w - 24), sc(17));
+            move_to(ctl.hwnd, sc(cx), vy(cy + 1), sc(22), sc(22));
+            move_to(ctl.label, sc(cx + 24), vy(cy + 4), sc(col_w - 24), sc(17));
         } else {
-            move_to(ctl.label, sc(cx), sc(cy), sc(col_w), sc(17));
+            move_to(ctl.label, sc(cx), vy(cy), sc(col_w), sc(17));
             let h = 26;
-            // llama-server 路径：右侧留出「浏览…」按钮的位置
             if ctl.key == "app.llamaExe" {
-                move_to(ctl.hwnd, sc(cx), sc(cy + 18), sc(col_w - 24 - 84), sc(h));
+                move_to(ctl.hwnd, sc(cx), vy(cy + 18), sc(col_w - 24 - 84), sc(h));
                 move_to(
                     g.btn_adv_browse,
                     sc(cx + col_w - 24 - 78),
-                    sc(cy + 18),
+                    vy(cy + 18),
                     sc(74),
                     sc(h),
                 );
             } else {
-                move_to(ctl.hwnd, sc(cx), sc(cy + 18), sc(col_w - 24), sc(h));
+                move_to(ctl.hwnd, sc(cx), vy(cy + 18), sc(col_w - 24), sc(h));
             }
         }
         col += 1;
@@ -3473,14 +3694,14 @@ fn position_advanced(g: &mut Gui) {
         cy += row_h;
     }
 
-    // ---- 模型扫描目录：列表 + 添加按钮 ----
+    // ---- 模型扫描目录 ----
     cy += 6;
-    move_to(g.lbl_scan_dirs, sc(x0), sc(cy), sc(full_w), sc(17));
+    move_to(g.lbl_scan_dirs, sc(x0), vy(cy), full_w, sc(17));
     cy += 20;
-    move_to(g.scan_list, sc(x0), sc(cy), sc(full_w), sc(list_h));
+    move_to(g.scan_list, sc(x0), vy(cy), full_w, sc(list_h));
     cy += list_h + 6;
 
-    // ---- 自动发现的新参数：一行入口（没有新参数时整块隐藏）----
+    // ---- 自动发现的新参数 ----
     if has_auto {
         cy += 4;
         let total = crate::paramspec::auto_params().len();
@@ -3488,15 +3709,29 @@ fn position_advanced(g: &mut Gui) {
             g.lbl_auto,
             &format!("{} {}: {}", i18n(g, "label.autoParams"), total, i18n(g, "label.autoParamsMore")),
         );
-        move_to(g.lbl_auto, sc(x0), sc(cy + 4), sc(col_w * 2 + 30), sc(17));
-        move_to(g.btn_auto, sc(x0 + col_w * 2 + 40), sc(cy), sc(112), sc(26));
-        cy += 34;
+        move_to(g.lbl_auto, sc(x0), vy(cy + 4), sc(col_w * 2 + 30), sc(17));
+        move_to(g.btn_auto, sc(x0 + col_w * 2 + 40), vy(cy), sc(112), sc(26));
     }
 
-    // 底部按钮始终贴在算出来的位置，并保证不越过客户区底边
-    let btn_y = (cy + 6).min(ch - sc(40));
-    move_to(g.btn_adv_save, sc(920), btn_y, sc(112), sc(32));
-    move_to(g.btn_adv_close, sc(796), btn_y, sc(112), sc(32));
+    // 底部按钮条底板：盖住滚动到按钮下方的内容
+    let band_top = btn_y - sc(6);
+    move_to(g.adv_footer, 0, band_top, cw, (ch - band_top).max(0));
+    // 底部按钮：固定在客户区下沿
+    move_to(g.btn_adv_save, cw - margin - sc(112), btn_y, sc(112), btn_h);
+    move_to(
+        g.btn_adv_close,
+        cw - margin - sc(112) * 2 - sc(8),
+        btn_y,
+        sc(112),
+        btn_h,
+    );
+
+    // 底板与按钮移动后必须重绘：它们互相压盖，不主动重画会留下上一帧的旧像素
+    unsafe {
+        for h in [g.adv_footer, g.btn_adv_save, g.btn_adv_close] {
+            InvalidateRect(h, std::ptr::null(), 1);
+        }
+    }
 }
 
 fn populate_advanced(g: &mut Gui) {
