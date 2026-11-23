@@ -506,8 +506,12 @@ fn elapsed_stamp(line: &str) -> String {
 
 struct SlotAgg {
     phase: Phase,
-    prompt: u64,
-    gen: u64,
+    /// 当前任务 id（变化说明换了新请求，增量要重新起算）
+    task: u64,
+    /// 输入 token（处理中才有值；空闲时 None = 保持上次显示）
+    prompt: Option<u64>,
+    /// 已生成 token（处理中才有值）
+    gen: Option<u64>,
     cache: u64,
     remaining: i64,
     ctx_used: u64,
@@ -537,8 +541,9 @@ fn fetch_slots(port: u16, key: &str) -> Result<SlotAgg, String> {
     let arr = json.as_arr().ok_or("shape".to_string())?;
     let mut agg = SlotAgg {
         phase: Phase::Idle,
-        prompt: 0,
-        gen: 0,
+        task: 0,
+        prompt: None,
+        gen: None,
         cache: 0,
         remaining: -1,
         ctx_used: 0,
@@ -547,22 +552,47 @@ fn fetch_slots(port: u16, key: &str) -> Result<SlotAgg, String> {
     };
     for s in arr.iter() {
         let processing = s.b("is_processing", false);
-        let decoded = s.i("n_decoded", 0).max(0) as u64;
-        let prompt = s.i("n_prompt_tokens", 0).max(0) as u64;
+        // llama-server 把「已生成 / 剩余」放在 next_token[0] 里，不在顶层；
+        // 部分 build 也会给顶层同名字段，两个都试。
+        let nt = s
+            .path("next_token")
+            .and_then(|v| v.as_arr())
+            .and_then(|a| a.first());
+        let decoded = nt
+            .map(|t| t.i("n_decoded", 0))
+            .unwrap_or_else(|| s.i("n_decoded", 0))
+            .max(0) as u64;
+        let remain = nt
+            .map(|t| t.i("n_remain", -1))
+            .unwrap_or_else(|| s.i("n_remaining", -1));
+        // n_prompt_tokens 是「上下文已用」，llama-server 会随生成增长，
+        // 减去已生成才是本次输入长度（kvmem 版不增长，减完仍然正确）
+        let ctx_tokens = s.i("n_prompt_tokens", 0).max(0) as u64;
+        let prompt = ctx_tokens.saturating_sub(decoded);
+
         if processing && decoded > 0 {
             agg.phase = Phase::Decode;
         } else if processing && agg.phase == Phase::Idle {
             agg.phase = Phase::Prompt;
         }
-        agg.prompt += prompt;
-        agg.gen += decoded;
+        if processing {
+            agg.gen = Some(agg.gen.unwrap_or(0) + decoded);
+            agg.prompt = Some(agg.prompt.unwrap_or(0) + prompt);
+        }
+        let task = s.i("id_task", 0).max(0) as u64;
+        if task > agg.task {
+            agg.task = task;
+        }
         agg.cache += s.i("n_prompt_tokens_cache", 0).max(0) as u64;
-        let rem = s.i("n_remaining", -1);
-        if rem >= 0 {
-            agg.remaining = if agg.remaining < 0 { rem } else { agg.remaining.min(rem) };
+        if remain >= 0 {
+            agg.remaining = if agg.remaining < 0 {
+                remain
+            } else {
+                agg.remaining.min(remain)
+            };
         }
         let ctx_used = s.i("n_ctx_used", 0).max(0) as u64;
-        let used = if ctx_used > 0 { ctx_used } else { prompt + decoded };
+        let used = if ctx_used > 0 { ctx_used } else { ctx_tokens };
         agg.ctx_used = agg.ctx_used.max(used);
         let n_ctx = s.i("n_ctx", 0).max(0) as u64;
         if n_ctx > agg.n_ctx {
@@ -604,6 +634,12 @@ fn run_loop() {
     let nvml = Nvml::load();
     let mut prev_gen: u64 = 0;
     let mut prev_prompt: u64 = 0;
+    let mut last_task: u64 = 0;
+    // 请求结束后 /slots 不再返回 token 数，用这些记住最后一次的值
+    let mut last_prompt: u64 = 0;
+    let mut last_gen: u64 = 0;
+    let mut last_remain: i64 = -1;
+    let mut last_ctx_peak: u64 = 0;
     let mut gen_tps: f64 = 0.0;
     let mut prompt_tps: f64 = 0.0;
     let mut last = Instant::now();
@@ -648,30 +684,53 @@ fn run_loop() {
                 Ok(agg) => {
                     slots_ok = true;
                     let dt = last.elapsed().as_secs_f64().max(0.001);
-                    // 输出速度：只在 decode 阶段且计数前进时更新，否则冻结上次值
-                    if agg.phase == Phase::Decode && agg.gen >= prev_gen && agg.gen > 0 {
-                        let d = (agg.gen - prev_gen) as f64;
-                        if d > 0.0 {
-                            gen_tps = d / dt;
-                        }
+                    // 换了请求（task 变化）就把增量基准归零，避免算出负数或跳变
+                    if agg.task != last_task {
+                        last_task = agg.task;
+                        prev_gen = 0;
+                        prev_prompt = 0;
                     }
-                    if agg.phase == Phase::Prompt && agg.prompt >= prev_prompt && agg.prompt > 0 {
-                        let d = (agg.prompt - prev_prompt) as f64;
-                        if d > 0.0 {
-                            prompt_tps = d / dt;
+                    // 输出速度：只在生成阶段、计数前进时更新；否则保持上次值（冻结）
+                    if let Some(gen) = agg.gen {
+                        if agg.phase == Phase::Decode && gen >= prev_gen {
+                            let d = (gen - prev_gen) as f64;
+                            if d > 0.0 {
+                                gen_tps = d / dt;
+                            }
                         }
+                        prev_gen = gen;
                     }
-                    prev_gen = agg.gen;
-                    prev_prompt = agg.prompt;
+                    if let Some(p) = agg.prompt {
+                        if agg.phase == Phase::Prompt && p >= prev_prompt {
+                            let d = (p - prev_prompt) as f64;
+                            if d > 0.0 {
+                                prompt_tps = d / dt;
+                            }
+                        }
+                        prev_prompt = p;
+                        // 请求结束后 /slots 不再给 token 数，保留最后一次的值
+                        last_prompt = p;
+                    }
+                    if let Some(g) = agg.gen {
+                        last_gen = g;
+                    }
+                    if agg.remaining >= 0 {
+                        last_remain = agg.remaining;
+                    }
+                    if agg.ctx_used > 0 {
+                        last_ctx_peak = agg.ctx_used;
+                    }
                     snap.rt = Realtime {
                         phase: agg.phase,
-                        prompt_tokens: agg.prompt,
-                        prompt_tps: if agg.phase == Phase::Idle { 0.0 } else { prompt_tps },
-                        gen_tokens: agg.gen,
-                        gen_tps: if agg.phase == Phase::Idle { 0.0 } else { gen_tps },
+                        prompt_tokens: last_prompt,
+                        // 速度不做阶段清零：请求结束后保留最后一次有效值（冻结），
+                        // 否则一闪而过的请求在面板上永远看不到速度
+                        prompt_tps,
+                        gen_tokens: last_gen,
+                        gen_tps,
                         cache_hit: agg.cache,
-                        remaining: agg.remaining,
-                        ctx_peak: agg.ctx_used,
+                        remaining: last_remain,
+                        ctx_peak: last_ctx_peak,
                     };
                     if agg.n_ctx > 0 {
                         props_ctx = agg.n_ctx;
@@ -697,6 +756,11 @@ fn run_loop() {
         } else {
             prev_gen = 0;
             prev_prompt = 0;
+            last_task = 0;
+            last_prompt = 0;
+            last_gen = 0;
+            last_remain = -1;
+            last_ctx_peak = 0;
             gen_tps = 0.0;
             prompt_tps = 0.0;
         }

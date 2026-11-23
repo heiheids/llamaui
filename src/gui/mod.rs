@@ -409,7 +409,8 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                 }
                 return 0;
             }
-            // 数据监控窗口：整窗自绘（没有子控件）
+            // 数据监控窗口：整窗自绘（没有子控件）。
+            // 用内存 DC 双缓冲再一次性贴到屏幕，避免每秒重绘时先擦背景再画的闪烁。
             if hwnd == MON_HWND.load(Ordering::Relaxed) {
                 let mut ps: PAINTSTRUCT = unsafe { std::mem::zeroed() };
                 let hdc = unsafe {
@@ -423,18 +424,25 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                     bottom: ch,
                 };
                 let snap = crate::monitor::snapshot();
-                with_gui(|g| {
-                    let lang = g.lang.clone();
-                    theme::paint_monitor(
-                        hdc,
-                        rc,
-                        &snap,
-                        g.font,
-                        g.font_bold,
-                        &|k| crate::i18n::t(&lang, k),
-                    );
-                });
                 unsafe {
+                    let mem = CreateCompatibleDC(hdc);
+                    let bmp = CreateCompatibleBitmap(hdc, cw.max(1), ch.max(1));
+                    let old = SelectObject(mem, bmp);
+                    with_gui(|g| {
+                        let lang = g.lang.clone();
+                        theme::paint_monitor(
+                            mem,
+                            rc,
+                            &snap,
+                            g.font,
+                            g.font_bold,
+                            &|k| crate::i18n::t(&lang, k),
+                        );
+                    });
+                    BitBlt(hdc, 0, 0, cw, ch, mem, 0, 0, SRCCOPY);
+                    SelectObject(mem, old);
+                    DeleteObject(bmp);
+                    DeleteDC(mem);
                     EndPaint(hwnd, &ps as *const PAINTSTRUCT as *const std::ffi::c_void);
                 }
                 return 0;

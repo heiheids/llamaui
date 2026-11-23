@@ -344,6 +344,10 @@ extern "system" {
     pub fn RoundRect(hdc: HDC, l: i32, t: i32, r: i32, b: i32, ew: i32, eh: i32) -> i32;
     pub fn Rectangle(hdc: HDC, l: i32, t: i32, r: i32, b: i32) -> i32;
     pub fn SelectObject(hdc: HDC, obj: isize) -> isize;
+    pub fn CreateCompatibleDC(hdc: HDC) -> HDC;
+    pub fn CreateCompatibleBitmap(hdc: HDC, w: i32, h: i32) -> isize;
+    pub fn BitBlt(dst: HDC, x: i32, y: i32, w: i32, h: i32, src: HDC, sx: i32, sy: i32, rop: u32) -> i32;
+    pub fn DeleteDC(hdc: HDC) -> i32;
     pub fn GetStockObject(kind: i32) -> isize;
     pub fn CreatePen(style: u32, width: i32, color: u32) -> isize;
     pub fn Polygon(hdc: HDC, pts: *const POINT, count: i32) -> i32;
@@ -367,6 +371,8 @@ pub const WS_CHILD: u32 = 0x4000_0000;
 pub const WS_VISIBLE: u32 = 0x1000_0000;
 pub const WS_TABSTOP: u32 = 0x0001_0000;
 pub const WS_VSCROLL: u32 = 0x0020_0000;
+/// BitBlt 光栅操作：直接拷贝
+pub const SRCCOPY: u32 = 0x00CC_0020;
 /// 滚轮与竖向滚动
 pub const WM_MOUSEWHEEL: u32 = 0x020A;
 pub const WM_VSCROLL: u32 = 0x0115;
