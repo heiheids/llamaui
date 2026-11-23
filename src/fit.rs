@@ -42,6 +42,12 @@ pub struct Estimate {
     pub on_cpu_layers: u32,
 }
 
+/// 「全部层上 GPU」的写法。
+/// llama.cpp 里 -ngl 恰好等于层数并不等于全量卸载：它会把输出层、MoE 专家
+/// 留在 CPU 上。实测 24 层 MoE 模型 -ngl 24 只有 4.8 tok/s，-ngl 99 有 39 tok/s。
+/// 所以凡是要「全放 GPU」的地方都写 99。
+pub const ALL_LAYERS: u32 = 99;
+
 /// 估算一次运行需要的显存
 ///
 /// * `file_bytes`：模型文件大小
@@ -193,7 +199,7 @@ pub fn profiles(
         "当前设置",
         "不改任何参数，先看现在这套要多少显存",
         ctx0,
-        layers,
+        ALL_LAYERS,
         "f16",
         true,
         0,
@@ -202,7 +208,7 @@ pub fn profiles(
     let mut rec_ctx = ctx0;
     let mut rec_fit = false;
     while rec_ctx >= 2048 {
-        let e = estimate(info, file_bytes, rec_ctx, layers, "q8_0", "q8_0", true);
+        let e = estimate(info, file_bytes, rec_ctx, ALL_LAYERS, "q8_0", "q8_0", true);
         if budget <= 0.0 || e.total <= budget {
             rec_fit = true;
             break;
@@ -219,7 +225,7 @@ pub fn profiles(
         } else {
             "全部层上 GPU，KV 用 q8_0（质量几乎无损，显存省一半）".to_string()
         };
-        out.push(make("推荐 · KV 量化", &note, rec_ctx, layers, "q8_0", true, 0));
+        out.push(make("推荐 · KV 量化", &note, rec_ctx, ALL_LAYERS, "q8_0", true, 0));
     }
     // ③ 长上下文：2 倍上下文 + q8_0
     let ctx2 = (ctx0.saturating_mul(2)).min(262144);
@@ -228,7 +234,7 @@ pub fn profiles(
             "长上下文",
             "上下文翻倍，仍用 q8_0 KV；显存不够就别选这个",
             ctx2,
-            layers,
+            ALL_LAYERS,
             "q8_0",
             true,
             0,
@@ -271,7 +277,7 @@ pub fn profiles(
             if half == 0 {
                 continue;
             }
-            let est = estimate(info, file_bytes, ctx0, layers, "q8_0", "q8_0", true);
+            let est = estimate(info, file_bytes, ctx0, ALL_LAYERS, "q8_0", "q8_0", true);
             // 专家权重约占 80%，留在内存后显存里只算剩下的部分
             let saved = est.weights * 0.8 * (half as f64 / layers as f64);
             let mut e = est.clone();
@@ -286,7 +292,7 @@ pub fn profiles(
                     title: "MoE · 专家放内存".to_string(),
                     note,
                     ctx: ctx0,
-                    ngl: layers,
+                    ngl: ALL_LAYERS,
                     kv_type: "q8_0".to_string(),
                     flash_attn: true,
                     n_cpu_moe: half,
