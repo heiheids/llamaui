@@ -710,7 +710,9 @@ pub fn position_all(g: &mut Gui) {
     move_to(g.st_endpoint, w(80), h(50), w(360), h(24));
     move_to(g.st_cpu, w(452), h(50), w(100), h(24));
     move_to(g.st_ram, w(560), h(50), w(170), h(24));
-    move_to(g.st_gpu, w(738), h(50), w(426), h(24));
+    move_to(g.st_gpu, w(738), h(50), w(230), h(24));
+    // 「复制本机地址」放在第二行右侧（显卡标签只用到约 210px）
+    move_to(g.btn_copy_local, w(976), h(44), w(120), h(CTL_H));
 
     // ---- 左侧模型库 ----
     move_to(g.lbl_models, w(16), h(96), w(200), h(20));
@@ -786,14 +788,6 @@ pub fn position_all(g: &mut Gui) {
         let cx = X0 + (i as i32) * (COL_W + GAP);
         place_field(ctl, cx, y, COL_W, k);
     }
-    // 「复制本机地址」放在第三列，与服务端口输入框同一行
-    move_to(
-        g.btn_copy_local,
-        w(X0 + 2 * (COL_W + GAP)),
-        h(y + 22),
-        w(120),
-        h(CTL_H),
-    );
     y += ROW_H;
 
     // 密钥：紧跟自定义地址下方，复制 / 生成新密钥按钮等高对齐
