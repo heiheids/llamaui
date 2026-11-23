@@ -68,10 +68,12 @@ the models in the same folder.
 |---|---|
 | **Model alias** | The model name used by the API. Empty = file name. Short names are friendlier for agent frameworks |
 | **Context size (tokens)** | Usually the model's native maximum, auto-filled from the GGUF header. Agent frameworks often need ≥ 67000. Smaller saves VRAM |
+| **Context follows model** | When checked, switching models resets the context to that model's native maximum (capped at 262144). Unchecked = use exactly what you typed |
 | **GPU layers** | 99 = put as much as possible on the GPU; lower it when VRAM is short |
 | **CPU threads** | Threads for generation; 0 = auto |
 | **Slots** | How many requests are handled concurrently; 1 = serial |
 | **Flash Attention** | `auto` / `on` / `off`; enabling saves VRAM on long contexts |
+| **Engine** | `llama.cpp` / `KVMem` / `NInfer`. Probed at startup, so engines that are not installed never appear |
 | **Enable vision** | Adds `--mmproj` to the launch arguments. It re-syncs automatically per model, depending on whether that model has a sidecar |
 | **Enable Jinja template** | Recommended; without it tool calls and thinking mode may not work |
 | **Allow LAN access** | Listens on `0.0.0.0`; the top bar then shows the LAN URL and can copy it |
@@ -91,8 +93,9 @@ model maximum, or manually set) and the current vision state.
 - **Start service** — builds the arguments, launches `llama-server`, streams its log into
   the bottom-right pane
 - **Stop service** — terminates the child process
-- Switching models while running stops the server first, so the UI never lies about what
-  is actually loaded
+- Switching models while running does **not** stop the server; the UI warns that the previous
+  model is still loaded, and you press **Stop service** yourself (so a running conversation
+  is never interrupted)
 - **Clear log** — clears the pane only
 
 The header shows: phase, current model, **this run's cumulative token usage (in/out)** and
@@ -187,11 +190,26 @@ llamaUI runs the translation once — provided the server is running and **idle*
 
 ### Text
 
-`reasoning mode`, `thinking budget`, `process priority`, `NUMA policy`, `custom chat template
+`reasoning mode`, `thinking budget`, `max output (tokens)`, `process priority`, `NUMA policy`, `custom chat template
 file`, `CORS origins`, `extra command-line arguments`
 
 **Extra command-line arguments** is the escape hatch: anything llamaUI does not know can be
 typed here, space-separated, with double quotes for values containing spaces.
+
+**Max output** defaults to 0 = auto: thinking models get 16384 tokens so they cannot spend the
+whole budget on reasoning and return an empty answer; other models are left to the engine default.
+
+### RoPE scaling
+
+Pushing the context past what the model was trained on forces positional extrapolation and the
+output quality drops sharply (llama.cpp only prints `possible training context overflow` and
+starts anyway). These three fields replace plain extrapolation:
+
+| Field | Meaning |
+|---|---|
+| **RoPE scaling** | `auto` / `none` / `linear` / `YaRN`. `auto` leaves the decision to the engine and the GGUF metadata |
+| **RoPE scale factor** | 0 = derive it from `context / model native context` |
+| **YaRN original context** | 0 = use the model's own training context; only used by YaRN |
 
 ### llama-server path
 

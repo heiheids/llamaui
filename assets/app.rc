@@ -1,4 +1,4 @@
-﻿#pragma code_page(65001)
+#pragma code_page(65001)
 /* 程序资源：图标 + 版本信息
  * App resources: icon and version info.
  * windres 由 build.rs 调用，产物链接进 llamaui.exe。
@@ -11,8 +11,8 @@
 1 24 "app.manifest"
 
 1 VERSIONINFO
-FILEVERSION 1,0,0,0
-PRODUCTVERSION 1,0,0,0
+FILEVERSION @VERSION_NUMERIC@
+PRODUCTVERSION @VERSION_NUMERIC@
 FILEOS 0x40004
 FILETYPE 0x1
 BEGIN
@@ -22,12 +22,12 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "黑山大叔"
       VALUE "FileDescription", "llama.cpp 模型管理器"
-      VALUE "FileVersion", "1.0.0.0"
+      VALUE "FileVersion", "@VERSION_DOTTED@"
       VALUE "InternalName", "llamaui"
       VALUE "LegalCopyright", "GPL-3.0-or-later | 作者 黑山大叔 https://space.bilibili.com/19428259"
       VALUE "OriginalFilename", "llamaui.exe"
       VALUE "ProductName", "llamaUI"
-      VALUE "ProductVersion", "1.0.0.0"
+      VALUE "ProductVersion", "@VERSION_DOTTED@"
     END
   END
   BLOCK "VarFileInfo"
