@@ -35,6 +35,8 @@ pub struct GgufInfo {
     pub full_attn_interval: u32,
     /// 滑窗大小（0 = 没有滑窗）
     pub sliding_window: u32,
+    /// 是否带逐层滑窗模式（true = 只有部分层是滑窗，KV 仍按完整上下文算）
+    pub sliding_pattern: bool,
     /// 内置 MTP（多 token 预测）层数，0 = 不支持
     pub nextn_layers: u32,
     /// 是否思考型模型（chat template 里带 think / reasoning 之类的开关）
@@ -155,6 +157,11 @@ pub fn read(path: &str) -> Option<GgufInfo> {
                 if alen > 10_000_000 {
                     return None;
                 }
+                // 逐层滑窗模式：这个键是数组，走不到下面的标量分支，
+                // 但它决定 KV 是否按完整上下文计算，必须先记下来
+                if key.ends_with(".attention.sliding_window_pattern") {
+                    info.sliding_pattern = true;
+                }
                 let is_int = matches!(atype, 4 | 5 | 10 | 11);
                 let mut first: Option<u32> = None;
                 for i in 0..alen {
@@ -212,6 +219,8 @@ fn apply_u32_key(info: &mut GgufInfo, key: &str, val: u32) {
         info.full_attn_interval = val;
     } else if key.ends_with(".nextn_predict_layers") {
         info.nextn_layers = val;
+    } else if key.ends_with(".attention.sliding_window_pattern") {
+        info.sliding_pattern = true;
     } else if key.ends_with(".attention.sliding_window") {
         info.sliding_window = val;
     }

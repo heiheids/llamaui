@@ -37,6 +37,8 @@ pub const ID_ESTIMATE: usize = 314;
 pub const ID_FIT_LIST: usize = 315;
 pub const ID_FIT_APPLY: usize = 316;
 pub const ID_FIT_CLOSE: usize = 317;
+/// 估算窗口里的「实测校准」行（绿色显示）
+pub const ID_FIT_MEASURED: usize = 318;
 pub const ID_HELP_TRANSLATE: usize = 309;
 pub const ID_AUTO_FILTER: usize = 310;
 pub const ID_SCAN_ADD: usize = 311;

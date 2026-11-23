@@ -1934,6 +1934,20 @@ fn open_fit_window(g: &mut Gui) {
     let struct1 = make_line(g);
     let struct2 = make_line(g);
     let struct3 = make_line(g);
+    // 实测校准行单独建，带 ID 以便上绿色
+    let struct4 = create_window(
+        "STATIC",
+        "",
+        0,
+        WS_CHILD | WS_VISIBLE | 0x0080,
+        0,
+        0,
+        10,
+        10,
+        hwnd,
+        ID_FIT_MEASURED,
+    );
+    set_font(struct4, g.font);
     let struct4 = make_line(g);
 
     let note = create_window(
@@ -2050,14 +2064,19 @@ fn build_fit_profiles(g: &Gui) -> Vec<crate::fit::Profile> {
     let line3 = i18n(g, "fit.kvAt128k")
         .replace("{q8}", &format!("{:.2}", gb(34.0 / 32.0, 131072)))
         .replace("{f16}", &format!("{:.2}", gb(2.0, 131072)));
-    // 有实测校准时再补一行：直接报「实测 vs 公式」，比折算到每 token 更可信
+    // 有实测校准时再补一行：实测占用 + 按实测推算的 128K 占用
+    let profiles = crate::fit::profiles_cal(&info, size, ctx, vram_total, extra);
     let line4 = match crate::vramcal::get(&g.selected_id) {
         Some(c) if c.sample_ctx > 0 => {
             let measured_gb = c.sample_mb as f64 / 1024.0;
             let formula_gb = measured_gb - (c.extra_mb_per_token * c.sample_ctx as f64) / 1024.0;
+            // 128K 单独按 q8_0 全量卸载算，避免误取到别的上下文档位
+            let at128 =
+                crate::fit::estimate_cal(&info, size, 131072, 99, "q8_0", "q8_0", true, extra).total;
             i18n(g, "fit.calibrated")
                 .replace("{ctx}", &c.sample_ctx.to_string())
                 .replace("{measured}", &format!("{:.1}", measured_gb))
+                .replace("{gb128}", &format!("{:.1}", at128))
                 .replace("{formula}", &format!("{:.1}", formula_gb))
                 .replace("{diff}", &format!("{:.1}", (measured_gb - formula_gb).max(0.0)))
         }
@@ -2067,7 +2086,7 @@ fn build_fit_profiles(g: &Gui) -> Vec<crate::fit::Profile> {
         l.struct_lines = vec![line1, line2, line3, line4];
     }
 
-    crate::fit::profiles_cal(&info, size, ctx, vram_total, extra)
+    profiles
 }
 
 fn fill_fit_list(g: &mut Gui) {

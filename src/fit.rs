@@ -130,8 +130,12 @@ pub fn estimate_cal(
     } else {
         (128, 128)
     };
-    // 滑窗层的 KV 只需窗口大小
-    let tokens = if info.sliding_window > 0 && info.full_attn_interval <= 1 {
+    // 滑窗层的 KV 只需窗口大小——但仅限「所有层都是滑窗」的模型。
+    // 带 sliding_window_pattern 的（如 Inkling）只有部分层是滑窗，
+    // 其余层仍要保存完整上下文 KV，按窗口算会严重低估（实测差 2 倍）。
+    let pure_sliding =
+        info.sliding_window > 0 && info.full_attn_interval <= 1 && !info.sliding_pattern;
+    let tokens = if pure_sliding {
         ctx.min(info.sliding_window)
     } else {
         ctx
@@ -243,7 +247,7 @@ pub fn profiles_cal(
     // ① 当前设置的效果（作为对照，总是放第一个）
     out.push(make(
         "当前设置",
-        "不改任何参数，先看现在这套要多少显存",
+        "当前占用率为估算，启动模型进行实测会更准确",
         ctx0,
         ALL_LAYERS,
         "f16",

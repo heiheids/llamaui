@@ -21,6 +21,8 @@ pub const ACCENT_HOVER: u32 = 0x00EE_804A;
 /// 主文字 #26313D
 pub const TEXT: u32 = 0x003D_3126;
 /// 次文字 #5C6B7A
+/// 实测/正确状态用的绿色
+pub const TEXT_OK: u32 = 0x0016_A34A;
 pub const TEXT_DIM: u32 = 0x007A_6B5C;
 /// 边框 #D5E2F2
 pub const BORDER: u32 = 0x00F2_E2D5;

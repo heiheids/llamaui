@@ -548,6 +548,9 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
                     PILL_COLOR.load(Ordering::Relaxed),
                     BRUSH_BAR.load(Ordering::Relaxed),
                 )
+            } else if id == layout::ID_FIT_MEASURED {
+                // 估算窗口的「实测校准」行：绿色，和公式估算区分开
+                (theme::TEXT_OK, BRUSH.load(Ordering::Relaxed))
             } else if (900..=910).contains(&id) {
                 (theme::TEXT_DIM, BRUSH_BAR.load(Ordering::Relaxed))
             } else {
