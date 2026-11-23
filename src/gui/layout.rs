@@ -695,7 +695,7 @@ pub fn position_all(g: &mut Gui) {
     move_to(g.btn_adv, w(1070), h(12), w(94), h(30));
 
     // ---- 顶栏第二行：复制按钮在地址左侧 ----
-    move_to(g.btn_copy_ep, w(16), h(49), w(56), h(CTL_H));
+    move_to(g.btn_copy_ep, w(16), h(44), w(56), h(CTL_H));
     move_to(g.st_endpoint, w(80), h(50), w(360), h(24));
     move_to(g.st_cpu, w(452), h(50), w(100), h(24));
     move_to(g.st_ram, w(560), h(50), w(170), h(24));
@@ -709,8 +709,8 @@ pub fn position_all(g: &mut Gui) {
     move_to(g.btn_start, w(16), h(524), w(300), h(CTL_H));
     move_to(g.btn_stop, w(16), h(566), w(300), h(CTL_H));
     move_to(g.lbl_args, w(16), h(608), w(104), h(18));
-    move_to(g.btn_param_help, w(122), h(599), w(92), h(CTL_H));
-    move_to(g.btn_estimate, w(220), h(599), w(96), h(CTL_H));
+    move_to(g.btn_param_help, w(122), h(597), w(92), h(CTL_H));
+    move_to(g.btn_estimate, w(220), h(597), w(96), h(CTL_H));
     move_to(g.args_view, w(16), h(630), w(300), h(242));
 
     // ---- 右侧：三列网格 ----
