@@ -661,7 +661,24 @@ pub fn build_args(cfg: &Json, model_path: &str) -> Vec<String> {
         }
     }
     a.push("-ngl".into());
-    a.push(cfg.i("launch.nGpuLayers", 99).to_string());
+    // 「GPU 层数」填成模型的层数时，用户的意思是「全部放 GPU」。
+    // 但 llama.cpp 对 -ngl 恰好等于层数会保留输出层/专家在 CPU 上，
+    // MoE 模型因此慢到几十分之一（实测 4.8 vs 39 tok/s）。
+    // 所以这里把「≥ 层数」统一抬成大数，真正全量卸载。
+    let want_ngl = cfg.i("launch.nGpuLayers", 99);
+    let ngl = if want_ngl > 0 {
+        let layers = crate::gguf::read(model_path)
+            .map(|g| g.block_count as i64)
+            .unwrap_or(0);
+        if layers > 0 && want_ngl >= layers {
+            99
+        } else {
+            want_ngl
+        }
+    } else {
+        want_ngl
+    };
+    a.push(ngl.to_string());
     push_num(&mut a, "-t", cfg, "launch.threads", 0.0);
     a.push("-np".into());
     a.push(cfg.i("launch.parallel", 1).to_string());

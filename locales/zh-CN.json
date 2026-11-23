@@ -291,6 +291,8 @@
     "clear": "清空",
     "systemPrompt": "系统提示词",
     "waiting": "等待模型响应…",
+    "reasoning": "思考过程",
+    "reasoningOnly": "（模型把输出预算全部用在了思考上，没有产出正文。可在高级设置里调大输出上限。）",
     "empty": "请先返回管理面板启动服务",
     "model": "模型",
     "addImage": "图片",

@@ -290,6 +290,8 @@
     "clear": "Clear",
     "systemPrompt": "System prompt",
     "waiting": "Waiting for the model…",
+    "reasoning": "Reasoning",
+    "reasoningOnly": "(The model spent the whole output budget on reasoning and produced no answer. Raise max output in advanced settings.)",
     "empty": "Start the server in the panel first",
     "model": "Model",
     "addImage": "Image",

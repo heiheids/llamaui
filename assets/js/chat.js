@@ -41,6 +41,28 @@ function addMessage(role, text, kind, images) {
   return box;
 }
 
+/**
+ * 思考型模型会把推理写进 reasoning_content，正文才是答案。
+ * 只显示正文时，思考阶段界面上什么都没有，看起来就像“没有输出”。
+ * 这里把思考过程折叠展示在答案上面。
+ */
+function addAssistantMessage(content, reasoning) {
+  const box = addMessage('assistant', content);
+  if (reasoning && reasoning.trim()) {
+    const details = document.createElement('details');
+    details.className = 'reasoning';
+    const summary = document.createElement('summary');
+    summary.textContent = t('chat.reasoning') + ' (' + reasoning.length + ')';
+    details.appendChild(summary);
+    const body = document.createElement('div');
+    body.className = 'reasoning-body';
+    body.textContent = reasoning;
+    details.appendChild(body);
+    box.insertBefore(details, box.firstChild ? box.firstChild.nextSibling : null);
+  }
+  return box;
+}
+
 function renderPhase(st) {
   const pill = el('chat-phase');
   pill.dataset.phase = st.phase || 'stopped';
@@ -163,9 +185,17 @@ async function send() {
       top_p: configured.sampling && configured.sampling.topP,
     });
     const choice = res.choices && res.choices[0];
-    const content = (choice && choice.message && choice.message.content) || '';
-    addMessage('assistant', content);
-    history.push({ role: 'assistant', content });
+    const msg = (choice && choice.message) || {};
+    const content = msg.content || '';
+    const reasoning = msg.reasoning_content || msg.reasoning || '';
+    if (!content && reasoning) {
+      // 只有思考没有正文：多半是输出预算被思考吃光了
+      addAssistantMessage(t('chat.reasoningOnly'), reasoning);
+      history.push({ role: 'assistant', content: '' });
+    } else {
+      addAssistantMessage(content, reasoning);
+      history.push({ role: 'assistant', content });
+    }
     status.textContent = '';
   } catch (e) {
     addMessage('system', e.message, 'error');
