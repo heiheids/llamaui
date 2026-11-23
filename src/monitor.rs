@@ -821,3 +821,14 @@ pub fn set_running(running: bool) {
 }
 
 fn _unused(_: Arc<Mutex<()>>) {}
+
+/// 一次性读取整卡已用显存（MB）。校准只需在启动前后各调用一次，
+/// 因此这里现加载现释放，不占用长期句柄。
+pub fn gpu_mem_used_mb() -> Option<u64> {
+    let n = Nvml::load()?;
+    let g = n.sample();
+    if !g.ok || g.mem_total == 0 {
+        return None;
+    }
+    Some(g.mem_used)
+}

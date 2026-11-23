@@ -21,6 +21,7 @@ mod store;
 mod sysinfo;
 mod translate;
 mod util;
+mod vramcal;
 mod web;
 
 use std::sync::{Arc, Mutex};

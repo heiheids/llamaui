@@ -284,6 +284,18 @@ pub fn on_tick(g: &mut Gui) {
         Ok(app) => app.launcher.status_json(&app.store.cfg).s("phase", "") == "running",
         Err(_) => false,
     };
+    // 服务跑起来后量一次真实显存，校准「显存估算」的公式误差
+    if let Some((_, c)) = crate::vramcal::tick(running) {
+        if let Ok(app) = g.shared.lock() {
+            app.launcher.push_log(
+                &format!(
+                    "vram-calib: ctx={} 实测每 token 额外 {:.3} MB（公式未计入的部分）",
+                    c.sample_ctx, c.extra_mb_per_token
+                ),
+                "",
+            );
+        }
+    }
     if running {
         let id = g.selected_id.clone();
         let mut changed = false;
@@ -1270,6 +1282,8 @@ fn start_server(g: &mut Gui) {
         msg_box(g.hwnd, &msg, &i18n(g, "status.error"), MB_OK | MB_ICONWARNING);
         return;
     }
+    // 先量基线显存：必须赶在 spawn 之前，否则模型显存已经算进去了
+    let vram_baseline = crate::monitor::gpu_mem_used_mb().unwrap_or(0);
     let res = match g.shared.lock() {
         Ok(mut app) => {
             // 上下文过小时提前告警：智能体框架通常要预留大量压缩余量
@@ -1296,6 +1310,38 @@ fn start_server(g: &mut Gui) {
         }
         Err(_) => Err("err.lock".to_string()),
     };
+    // 启动成功后记录校准基线：服务跑起来再量一次真实显存，
+    // 用来修正「显存估算」对新架构的低估
+    if res.is_ok() {
+        let fp = crate::vramcal::Fingerprint {
+            ngl: cfg_snapshot.i("launch.nGpuLayers", 99),
+            ctk: cfg_snapshot.s("cache.typeK", "f16"),
+            ctv: cfg_snapshot.s("cache.typeV", "f16"),
+            ncmoe: cfg_snapshot.i("gpu.nCpuMoe", 0),
+            vision: cfg_snapshot.b("launch.vision", true),
+        };
+        let size = match g.shared.lock() {
+            Ok(app) => app.lib.find(&model_id).map(|m| m.size).unwrap_or(0),
+            Err(_) => 0,
+        };
+        // 识图模型的 mmproj 也占显存，校准时要先扣掉，否则会被算成每 token 成本
+        let mmproj_mb = if cfg_snapshot.b("launch.vision", true) {
+            let p = crate::util::absolutize(&cfg_snapshot.s("launch.mmproj", ""));
+            std::fs::metadata(&p).map(|m| m.len() / 1_048_576).unwrap_or(0)
+        } else {
+            0
+        };
+        crate::vramcal::begin(
+            &model_id,
+            &crate::util::absolutize(&model_path),
+            size,
+            cfg_snapshot.i("launch.ctxSize", 8192).max(1) as u32,
+            fp,
+            cfg_snapshot.s("launch.flashAttn", "auto") != "off",
+            vram_baseline,
+            mmproj_mb,
+        );
+    }
     if let Err(e) = res {
         let code = e.split(':').next().unwrap_or("err.spawnFailed").to_string();
         set_text(g.lbl_hint, &i18n(g, &code));
@@ -1948,7 +1994,11 @@ fn build_fit_profiles(g: &Gui) -> Vec<crate::fit::Profile> {
     let abs = crate::util::absolutize(&path);
     let info = crate::gguf::read(&abs).unwrap_or_default();
     let (_, vram_total, _) = crate::sysinfo::sample().gpu_summary();
-    crate::fit::profiles(&info, size, ctx, vram_total)
+    // 有实测校准就带上修正值，否则退回纯公式
+    let extra = crate::vramcal::get(&g.selected_id)
+        .map(|c| c.extra_mb_per_token)
+        .unwrap_or(0.0);
+    crate::fit::profiles_cal(&info, size, ctx, vram_total, extra)
 }
 
 fn fill_fit_list(g: &mut Gui) {

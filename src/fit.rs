@@ -36,6 +36,8 @@ pub struct Estimate {
     pub kv: f64,
     /// 计算缓冲（GB）
     pub compute: f64,
+    /// 实测校准补上的额外显存（GB）
+    pub extra: f64,
     /// 合计（GB）
     pub total: f64,
     /// 放不下的层数会被放到内存
@@ -61,6 +63,30 @@ pub fn estimate(
     kv_type_k: &str,
     kv_type_v: &str,
     flash_attn: bool,
+) -> Estimate {
+    estimate_cal(
+        info,
+        file_bytes,
+        ctx,
+        gpu_layers,
+        kv_type_k,
+        kv_type_v,
+        flash_attn,
+        0.0,
+    )
+}
+
+/// 同 `estimate`，但带上实测校准出的「每 token 额外显存」（MB/token）。
+/// 新架构的自定义注意力开销没法从 GGUF 元数据推出来，只能靠实测量补上。
+pub fn estimate_cal(
+    info: &GgufInfo,
+    file_bytes: u64,
+    ctx: u32,
+    gpu_layers: u32,
+    kv_type_k: &str,
+    kv_type_v: &str,
+    flash_attn: bool,
+    extra_mb_per_token: f64,
 ) -> Estimate {
     let layers = if info.block_count > 0 {
         info.block_count
@@ -120,11 +146,13 @@ pub fn estimate(
         0.75 + 1.40 * ctx_gb
     };
 
-    let total = weights + kv + compute;
+    let extra = (extra_mb_per_token.max(0.0) * ctx as f64) / 1024.0;
+    let total = weights + kv + compute + extra;
     Estimate {
         weights,
         kv,
         compute,
+        extra,
         total,
         on_cpu_layers: layers.saturating_sub(on_gpu),
     }
@@ -157,6 +185,17 @@ pub fn profiles(
     cur_ctx: u32,
     vram_total_gb: f64,
 ) -> Vec<Profile> {
+    profiles_cal(info, file_bytes, cur_ctx, vram_total_gb, 0.0)
+}
+
+/// 带实测校准的版本：`extra_mb_per_token` = 公式之外每 token 的额外显存
+pub fn profiles_cal(
+    info: &GgufInfo,
+    file_bytes: u64,
+    cur_ctx: u32,
+    vram_total_gb: f64,
+    extra_mb_per_token: f64,
+) -> Vec<Profile> {
     let layers = if info.block_count > 0 {
         info.block_count
     } else {
@@ -179,7 +218,7 @@ pub fn profiles(
                 fa: bool,
                 n_cpu_moe: u32|
      -> Profile {
-        let est = estimate(info, file_bytes, ctx, ngl, kv, kv, fa);
+        let est = estimate_cal(info, file_bytes, ctx, ngl, kv, kv, fa, extra_mb_per_token);
         let fits = budget <= 0.0 || est.total <= budget;
         Profile {
             title: title.to_string(),
@@ -208,7 +247,7 @@ pub fn profiles(
     let mut rec_ctx = ctx0;
     let mut rec_fit = false;
     while rec_ctx >= 2048 {
-        let e = estimate(info, file_bytes, rec_ctx, ALL_LAYERS, "q8_0", "q8_0", true);
+        let e = estimate_cal(info, file_bytes, rec_ctx, ALL_LAYERS, "q8_0", "q8_0", true, extra_mb_per_token);
         if budget <= 0.0 || e.total <= budget {
             rec_fit = true;
             break;
@@ -246,7 +285,7 @@ pub fn profiles(
             let ngl = ((layers as f64 * keep) as u32).max(1);
             let mut c = ctx0;
             while c >= 2048 {
-                let est = estimate(info, file_bytes, c, ngl, "q8_0", "q8_0", true);
+                let est = estimate_cal(info, file_bytes, c, ngl, "q8_0", "q8_0", true, extra_mb_per_token);
                 if est.total <= budget {
                     let note = format!(
                         "把 {} 层放内存，上下文 {}，生成速度会明显下降",
@@ -277,7 +316,7 @@ pub fn profiles(
             if half == 0 {
                 continue;
             }
-            let est = estimate(info, file_bytes, ctx0, ALL_LAYERS, "q8_0", "q8_0", true);
+            let est = estimate_cal(info, file_bytes, ctx0, ALL_LAYERS, "q8_0", "q8_0", true, extra_mb_per_token);
             // 专家权重约占 80%，留在内存后显存里只算剩下的部分
             let saved = est.weights * 0.8 * (half as f64 / layers as f64);
             let mut e = est.clone();
