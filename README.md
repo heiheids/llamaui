@@ -1,5 +1,6 @@
-<img width="1182" height="920" alt="2026-11-21_055014" src="https://github.com/user-attachments/assets/313a2194-899d-41cd-8bc8-5ffe34be6a42" />
+
 # llamaUI — a native Windows GUI for llama.cpp's `llama-server`
+<img width="1186" height="923" alt="2026-11-25_012233" src="https://github.com/user-attachments/assets/42199bce-c16c-4dd8-a38b-ef2f7ebd6651" />
 
 [简体中文](README.zh-CN.md) · English
 
