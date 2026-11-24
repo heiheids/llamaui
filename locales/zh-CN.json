@@ -309,6 +309,10 @@
     "structPlain": "模型结构：{layers} 层 · 全部为全注意力 → 有效 KV 层 {kvl} · KV 头 {heads} · K/V 维度 {dim}",
     "kvPerToken": "每 token KV：{q8} KB（q8_0）/ {f16} KB（f16）",
     "kvAt128k": "128K 上下文 KV 占用：{q8} GB（q8_0）/ {f16} GB（f16）",
+    "notMeasured": "该模型尚未实测：启动一次后才会给出 KV 占用与档位推荐（滑窗/混合注意力模型按公式估算偏差较大）",
+    "unknownVram": "显存未知（未实测）",
+    "slidingSuffix": "　（该模型含滑窗层，KV 体积只能实测确认）",
+    "structSliding": "模型结构：{layers} 层 · 含逐层滑窗（窗口 {win}）→ 有效 KV 层 {kvl} · KV 头 {heads} · K/V 维度 {dim}",
     "calibrated": "实测校准：{ctx} 上下文实测占用 {measured} GB · 经实测推算 128K 上下文 {gb128} GB（结构公式仅 {formula} GB，少算 {diff} GB）"
   },  "help": {
     "header": "以下是本程序本次将要传给 llama-server 的参数，逐条给出含义。\r\n说明依据随附 llama.cpp（b12549）的官方 --help 文案整理；每段以 * 开头的是参数本身及其取值，下面两行分别是中文解读与官方英文原文。\r\n内容比窗口长时，可用右侧滚动条或鼠标滚轮查看全部参数。"

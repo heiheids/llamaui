@@ -201,16 +201,18 @@ pub fn profiles(
     cur_ctx: u32,
     vram_total_gb: f64,
 ) -> Vec<Profile> {
-    profiles_cal(info, file_bytes, cur_ctx, vram_total_gb, 0.0)
+    profiles_cal(info, file_bytes, cur_ctx, vram_total_gb, 0.0, false)
 }
 
 /// 带实测校准的版本：`extra_mb_per_token` = 公式之外每 token 的额外显存
+/// `calibrated` = 该模型是否真的启动过（false 时不给任何推荐）
 pub fn profiles_cal(
     info: &GgufInfo,
     file_bytes: u64,
     cur_ctx: u32,
     vram_total_gb: f64,
     extra_mb_per_token: f64,
+    calibrated: bool,
 ) -> Vec<Profile> {
     let layers = if info.block_count > 0 {
         info.block_count
@@ -225,7 +227,6 @@ pub fn profiles_cal(
     };
     let mut out: Vec<Profile> = Vec::new();
 
-    // 生成一个候选配置
     let make = |title: &str,
                 note: &str,
                 ctx: u32,
@@ -249,6 +250,26 @@ pub fn profiles_cal(
         }
     };
 
+    // 没实测过就不给推荐：滑窗/混合注意力模型从元数据推出来的 KV 会严重偏高
+    // （gemma 的静默滑窗被当成全注意力，64K 算出 59 GB，实际差一倍多）。
+    // 宁可只报「当前设置」，也不给一串不可信的数字误导用户。
+    if !calibrated {
+        // 连「当前设置要多少显存」也不给具体数字：滑窗/混合注意力模型按公式算出的
+        // 数值错得离谱（gemma 64K 报 35 GB，实际差一倍多），写出来就是误导。
+        let mut p = make(
+            "当前设置（未实测）",
+            "这个模型还没实际启动过，显存占用无法准确估算；启动一次后会自动实测并给出推荐档位",
+            ctx0,
+            ALL_LAYERS,
+            "q8_0",
+            true,
+            0,
+        );
+        p.est.total = 0.0;
+        p.fits = false;
+        out.push(p);
+        return out;
+    }
     // ① 当前设置的效果（作为对照，总是放第一个）
     out.push(make(
         "当前设置",

@@ -2088,14 +2088,27 @@ fn build_fit_profiles(g: &Gui) -> Vec<crate::fit::Profile> {
             .replace("{heads}", &st.kv_heads.to_string())
             .replace("{dim}", &(st.k_len + st.v_len).to_string())
     };
-    let line2 = i18n(g, "fit.kvPerToken")
-        .replace("{q8}", &format!("{:.1}", kb(34.0 / 32.0)))
-        .replace("{f16}", &format!("{:.1}", kb(2.0)));
-    let line3 = i18n(g, "fit.kvAt128k")
-        .replace("{q8}", &format!("{:.2}", gb(34.0 / 32.0, 131072)))
-        .replace("{f16}", &format!("{:.2}", gb(2.0, 131072)));
-    // 有实测校准时再补一行：实测占用 + 按实测推算的 128K 占用
-    let profiles = crate::fit::profiles_cal(&info, size, ctx, vram_total, extra);
+    // 滑窗模型按「全注意力」推 KV 会差一倍以上，这里明确标出只能实测确认
+    let mut line1 = line1;
+    if info.sliding_window > 0 || info.sliding_pattern {
+        line1.push_str(&i18n(g, "fit.slidingSuffix"));
+    }
+    let calibrated = crate::vramcal::get(&g.selected_id).is_some();
+    // 没实测过的模型不给每 token / 128K 这些推算数字：
+    // 滑窗模型按全注意力算会差一倍以上，写出来只会误导。
+    let (line2, line3) = if calibrated {
+        (
+            i18n(g, "fit.kvPerToken")
+                .replace("{q8}", &format!("{:.1}", kb(34.0 / 32.0)))
+                .replace("{f16}", &format!("{:.1}", kb(2.0))),
+            i18n(g, "fit.kvAt128k")
+                .replace("{q8}", &format!("{:.2}", gb(34.0 / 32.0, 131072)))
+                .replace("{f16}", &format!("{:.2}", gb(2.0, 131072))),
+        )
+    } else {
+        (i18n(g, "fit.notMeasured"), String::new())
+    };
+    let profiles = crate::fit::profiles_cal(&info, size, ctx, vram_total, extra, calibrated);
     let line4 = match crate::vramcal::get(&g.selected_id) {
         Some(c) if c.sample_ctx > 0 => {
             let measured_gb = c.sample_mb as f64 / 1024.0;
@@ -2149,8 +2162,18 @@ fn fill_fit_list(g: &mut Gui) {
         list_add(
             ctl.list,
             &format!(
-                "[{}] {:<18} -c {} -ngl {}{} -ctk {}   ~{:.1} GB",
-                mark, p.title, p.ctx, p.ngl, moe, kv, p.est.total
+                "[{}] {:<18} -c {} -ngl {}{} -ctk {}   {}",
+                mark,
+                p.title,
+                p.ctx,
+                p.ngl,
+                moe,
+                kv,
+                if p.est.total > 0.0 {
+                    format!("~{:.1} GB", p.est.total)
+                } else {
+                    i18n(g, "fit.unknownVram")
+                }
             ),
         );
     }
