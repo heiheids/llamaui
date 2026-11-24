@@ -68,7 +68,10 @@ the models in the same folder.
 |---|---|
 | **Model alias** | The model name used by the API. Empty = file name. Short names are friendlier for agent frameworks |
 | **Context size (tokens)** | Usually the model's native maximum, auto-filled from the GGUF header. Agent frameworks often need ≥ 67000. Smaller saves VRAM |
-| **Context follows model** | **Off by default.** Context is remembered per model: checked = that model's native value (capped at 262144); typed manually = your value is remembered; neither = **65536** (64K) by default, so a model never blows up VRAM just because nobody looked at the setting |
+| **Auto-fit to VRAM (--fit)** | Let llama.cpp decide layers and context from the free device memory; it really does estimate KV, compute buffers and per-layer weights. On this 22 GB card with ub 64 it picked 339200 tokens. When on, Context size and GPU layers are ignored |
+| **VRAM headroom (MiB)** | How much VRAM `--fit` leaves unused, default 1024; try 256 to squeeze out more context |
+| **Minimum fitted context** | Lowest context `--fit` may shrink to before it errors |
+| **MoE expert VRAM cache** | With experts in RAM, cache hot ones in VRAM (`--moe-cache-mib`); 0 disables || **Context follows model** | **Off by default.** Context is remembered per model: checked = that model's native value (capped at 262144); typed manually = your value is remembered; neither = **65536** (64K) by default, so a model never blows up VRAM just because nobody looked at the setting |
 | **GPU layers** | 99 = put as much as possible on the GPU; lower it when VRAM is short |
 | **CPU threads** | Threads for generation; 0 = auto |
 | **Slots** | How many requests are handled concurrently; 1 = serial |

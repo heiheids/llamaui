@@ -159,7 +159,7 @@ const fn flt(
 pub const SELECT_YES_NO: &[&str] = &["auto", "on", "off"];
 /// 推理引擎：llama.cpp 原生，或 KVMem（需自带 llama-kvmem-server.exe）
 pub const SELECT_ENGINE: &[&str] = &["llama.cpp", "KVMem", "NInfer"];
-pub const SELECT_LOAD_MODE: &[&str] = &["auto", "none", "mmap", "mlock", "mmap+mlock"];
+pub const SELECT_LOAD_MODE: &[&str] = &["auto", "none", "mmap", "mlock", "mmap+mlock", "dio"];
 pub const SELECT_SPLIT: &[&str] = &["auto", "none", "layer", "row", "tensor"];
 pub const SELECT_CACHE: &[&str] = &["f16", "f32", "bf16", "q8_0", "q5_1", "q5_0", "q4_1", "q4_0", "iq4_nl"];
 pub const SELECT_REASONING: &[&str] = &["auto", "on", "off"];
@@ -194,6 +194,13 @@ pub const FIELDS: &[Field] = &[
     num("launch.batchSize", "advanced", "field.batchSize", "hint.batchSize", 1.0, 65536.0, 64.0, true),
     num("launch.ubatchSize", "advanced", "field.ubatchSize", "hint.ubatchSize", 1.0, 65536.0, 64.0, true),
     sel("launch.loadMode", "advanced", "field.loadMode", "hint.loadMode", SELECT_LOAD_MODE, true),
+    // b126xx 起的 --fit：把「层数 / 上下文」交给 llama.cpp 按可用显存自己算，
+    // 比我们按 GGUF 元数据估算准（它会实际算 KV、计算缓冲、每层开销）
+    f("launch.autoFit", Kind::Bool, "advanced", "field.autoFit", "hint.autoFit", true),
+    num("launch.fitTarget", "advanced", "field.fitTarget", "hint.fitTarget", 0.0, 65536.0, 256.0, true),
+    num("launch.fitMinCtx", "advanced", "field.fitMinCtx", "hint.fitMinCtx", 2048.0, 1048576.0, 1024.0, true),
+    // 专家权重留在内存时，可以把最近用到的专家缓存到显存（MoE 模型提速）
+    num("gpu.moeCacheMiB", "advanced", "field.moeCacheMiB", "hint.moeCacheMiB", 0.0, 65536.0, 512.0, true),
     sel("gpu.splitMode", "advanced", "field.splitMode", "hint.splitMode", SELECT_SPLIT, true),
     f("gpu.tensorSplit", Kind::Text, "advanced", "field.tensorSplit", "hint.tensorSplit", true),
     num("gpu.mainGpu", "advanced", "field.mainGpu", "hint.mainGpu", 0.0, 64.0, 1.0, true),
@@ -262,6 +269,10 @@ pub fn defaults() -> Json {
     c.set_path("launch.batchSize", Json::Num(2048.0));
     c.set_path("launch.ubatchSize", Json::Num(512.0));
     c.set_path("launch.loadMode", Json::str("auto"));
+    c.set_path("launch.autoFit", Json::Bool(false));
+    c.set_path("launch.fitTarget", Json::Num(1024.0));
+    c.set_path("launch.fitMinCtx", Json::Num(4096.0));
+    c.set_path("gpu.moeCacheMiB", Json::Num(0.0));
     c.set_path("launch.embeddings", Json::Bool(false));
     c.set_path("launch.noWarmup", Json::Bool(false));
     c.set_path("app.autoTranslate", Json::Bool(false));
@@ -623,8 +634,20 @@ pub fn build_args(cfg: &Json, model_path: &str) -> Vec<String> {
     };
     push_opt(&mut a, "--alias", &alias);
     let ctx_want = cfg.i("launch.ctxSize", 4096);
-    a.push("-c".into());
-    a.push(ctx_want.to_string());
+    // 自动适配显存时，上下文和层数都交给 llama.cpp 的 --fit 去算
+    // （它真的会估算 KV、计算缓冲和每层权重，比我们自己推的准）
+    let auto_fit = cfg.b("launch.autoFit", false);
+    if auto_fit {
+        a.push("-fit".into());
+        a.push("on".into());
+        a.push("-fitt".into());
+        a.push(cfg.i("launch.fitTarget", 1024).max(0).to_string());
+        a.push("-fitc".into());
+        a.push(cfg.i("launch.fitMinCtx", 4096).max(2048).to_string());
+    } else {
+        a.push("-c".into());
+        a.push(ctx_want.to_string());
+    }
 
     // ---- RoPE 缩放 ----
     // 把上下文开到模型原生上限之上时，裸外推会让质量明显变差；
@@ -665,7 +688,9 @@ pub fn build_args(cfg: &Json, model_path: &str) -> Vec<String> {
             }
         }
     }
-    a.push("-ngl".into());
+    if !auto_fit {
+        a.push("-ngl".into());
+    }
     // 「GPU 层数」填成模型的层数时，用户的意思是「全部放 GPU」。
     // 但 llama.cpp 对 -ngl 恰好等于层数会保留输出层/专家在 CPU 上，
     // MoE 模型因此慢到几十分之一（实测 4.8 vs 39 tok/s）。
@@ -683,7 +708,9 @@ pub fn build_args(cfg: &Json, model_path: &str) -> Vec<String> {
     } else {
         want_ngl
     };
-    a.push(ngl.to_string());
+    if !auto_fit {
+        a.push(ngl.to_string());
+    }
     push_num(&mut a, "-t", cfg, "launch.threads", 0.0);
     a.push("-np".into());
     a.push(cfg.i("launch.parallel", 1).to_string());
@@ -733,6 +760,11 @@ pub fn build_args(cfg: &Json, model_path: &str) -> Vec<String> {
 
     push_num(&mut a, "-b", cfg, "launch.batchSize", 2048.0);
     push_num(&mut a, "-ub", cfg, "launch.ubatchSize", 512.0);
+    let moe_cache = cfg.i("gpu.moeCacheMiB", 0);
+    if moe_cache > 0 {
+        a.push("--moe-cache-mib".into());
+        a.push(moe_cache.to_string());
+    }
     let lm = cfg.s("launch.loadMode", "auto");
     if lm != "auto" {
         a.push("-lm".into());
