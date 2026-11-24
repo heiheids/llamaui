@@ -1350,6 +1350,8 @@ fn start_server(g: &mut Gui) {
             ctv: cfg_snapshot.s("cache.typeV", "f16"),
             ncmoe: cfg_snapshot.i("gpu.nCpuMoe", 0),
             vision: cfg_snapshot.b("launch.vision", true),
+            batch: cfg_snapshot.i("launch.batchSize", 2048),
+            ubatch: cfg_snapshot.i("launch.ubatchSize", 512),
         };
         let size = match g.shared.lock() {
             Ok(app) => app.lib.find(&model_id).map(|m| m.size).unwrap_or(0),

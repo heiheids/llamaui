@@ -32,6 +32,8 @@ pub struct Calib {
     pub ctv: String,
     pub ncmoe: i64,
     pub vision: bool,
+    pub batch: i64,
+    pub ubatch: i64,
     pub ts: u64,
 }
 
@@ -43,6 +45,10 @@ pub struct Fingerprint {
     pub ctv: String,
     pub ncmoe: i64,
     pub vision: bool,
+    /// 批大小会显著改变计算缓冲（256K 时 ub 512 要 25 GB，ub 64 只要 4 GB），
+    /// 所以必须一起记，否则不同批大小的测量点混用会算错
+    pub batch: i64,
+    pub ubatch: i64,
 }
 
 impl Fingerprint {
@@ -52,6 +58,8 @@ impl Fingerprint {
             && self.ctv == c.ctv
             && self.ncmoe == c.ncmoe
             && self.vision == c.vision
+            && self.batch == c.batch
+            && self.ubatch == c.ubatch
     }
 }
 
@@ -128,6 +136,8 @@ pub fn get(model_id: &str) -> Option<Calib> {
         ctv: o.s("ctv", ""),
         ncmoe: o.i("ncmoe", 0),
         vision: o.b("vision", false),
+        batch: o.i("batch", 0),
+        ubatch: o.i("ubatch", 0),
         ts: o.i("ts", 0).max(0) as u64,
     })
 }
@@ -179,7 +189,9 @@ pub fn put_point(model_id: &str, ctx: u32, mb: u32, fp: &Fingerprint, extra_mb_p
             && o.s("ctk", "") == fp.ctk
             && o.s("ctv", "") == fp.ctv
             && o.i("ncmoe", 0) == fp.ncmoe
-            && o.b("vision", false) == fp.vision;
+            && o.b("vision", false) == fp.vision
+            && o.i("batch", 0) == fp.batch
+            && o.i("ubatch", 0) == fp.ubatch;
         if same {
             if let Some(arr) = o.get("points").and_then(|v| v.as_arr()) {
                 for p in arr {
@@ -217,6 +229,8 @@ pub fn put_point(model_id: &str, ctx: u32, mb: u32, fp: &Fingerprint, extra_mb_p
     o.set("ctv", Json::str(&fp.ctv));
     o.set("ncmoe", Json::Num(fp.ncmoe as f64));
     o.set("vision", Json::Bool(fp.vision));
+    o.set("batch", Json::Num(fp.batch as f64));
+    o.set("ubatch", Json::Num(fp.ubatch as f64));
     o.set("ts", Json::Num(crate::util::now_secs() as f64));
     o.set("formula", Json::Num(FORMULA_VERSION as f64));
     j.set(model_id, o);
