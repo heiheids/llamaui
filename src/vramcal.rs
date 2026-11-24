@@ -231,6 +231,13 @@ pub fn tick(running: bool) -> Option<(String, Calib)> {
     };
 
     let used_whole = sample.last_mb;
+    // 显存已经贴到上限，说明这次摆不下、驱动在偷偷换页，
+    // 量到的数字不能当校准样本（会把每 token 开销算小）
+    if let Some(total) = crate::monitor::gpu_mem_total_mb() {
+        if total > 0 && (used_whole as f64) / (total as f64) >= 0.92 {
+            return None;
+        }
+    }
     // 启动前量过基线就用增量，否则退回整卡占用（会偏高，但至少不是低估）
     let used_mb = if sample.baseline_mb > 0 && used_whole > sample.baseline_mb {
         used_whole - sample.baseline_mb

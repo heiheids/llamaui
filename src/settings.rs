@@ -581,6 +581,11 @@ fn push_f(flag: &str, cfg: &Json, key: &str, def: f64, a: &mut Vec<String>) {
 }
 
 /// 依据配置与模型路径生成启动参数（按引擎分派）
+/// 新模型的默认上下文：64K。
+/// 各模型原生上限差别很大（32K ~ 1M），一上来就用原生值很容易爆显存，
+/// 所以默认给一个多数模型都放得下的档位，用户可自行调整并被记住。
+pub const DEFAULT_CTX: i64 = 65536;
+
 pub fn build_args(cfg: &Json, model_path: &str) -> Vec<String> {
     // NInfer 引擎：模型是位置参数、参数集完全不同，单独构建
     if crate::process::Launcher::is_ninfer(cfg) {

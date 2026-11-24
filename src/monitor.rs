@@ -832,3 +832,12 @@ pub fn gpu_mem_used_mb() -> Option<u64> {
     }
     Some(g.mem_used)
 }
+/// 一次性读取整卡显存总量（MB），校准做溢出判断用
+pub fn gpu_mem_total_mb() -> Option<u64> {
+    let n = Nvml::load()?;
+    let g = n.sample();
+    if !g.ok || g.mem_total == 0 {
+        return None;
+    }
+    Some(g.mem_total)
+}

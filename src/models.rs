@@ -47,6 +47,10 @@ pub struct Model {
     pub ctx_native: u32,
     /// 配套的视觉投影文件（mmproj）路径；空表示不是识图模型
     pub mmproj: String,
+    /// 用户为该模型手动指定的上下文（0 = 没设过，用默认 64K）
+    pub ctx_saved: u32,
+    /// 该模型是否勾选了「上下文跟随模型」
+    pub ctx_auto: bool,
 }
 
 pub struct Library {
@@ -76,6 +80,8 @@ impl Library {
                             unsupported: o.b("unsupported", false),
                             ctx_native: o.i("ctxNative", 0) as u32,
                             mmproj: o.s("mmproj", ""),
+                            ctx_saved: o.i("ctxSaved", 0) as u32,
+                            ctx_auto: o.b("ctxAuto", false),
                             path: p,
                         });
                     }
@@ -112,11 +118,18 @@ o.set("vision", Json::Bool(m.vision));
             o.set("unsupported", Json::Bool(m.unsupported));
             o.set("ctxNative", Json::Num(m.ctx_native as f64));
             o.set("mmproj", Json::str(&m.mmproj));
+            o.set("ctxSaved", Json::Num(m.ctx_saved as f64));
+            o.set("ctxAuto", Json::Bool(m.ctx_auto));
             items.push(o);
         }
         let mut root = Json::obj();
         root.set("items", Json::Arr(items));
         util::write_atomic(&self.path, &root.to_pretty())
+    }
+
+    /// 可写查找：用于记住「这个模型上次用的上下文」
+    pub fn find_mut(&mut self, id: &str) -> Option<&mut Model> {
+        self.items.iter_mut().find(|m| m.id == id)
     }
 
     pub fn find(&self, id: &str) -> Option<&Model> {
@@ -140,6 +153,8 @@ o.set("vision", Json::Bool(m.vision));
                 o.set("unsupported", Json::Bool(m.unsupported));
             o.set("ctxNative", Json::Num(m.ctx_native as f64));
             o.set("mmproj", Json::str(&m.mmproj));
+            o.set("ctxSaved", Json::Num(m.ctx_saved as f64));
+            o.set("ctxAuto", Json::Bool(m.ctx_auto));
                 o.set("addedAt", Json::Num(m.added_at as f64));
                 o
             })
@@ -196,6 +211,9 @@ o.set("vision", Json::Bool(m.vision));
                 unsupported: false,
                 ctx_native,
                 mmproj,
+                // 新加的模型：没设过上下文，也不跟随原生
+                ctx_saved: 0,
+                ctx_auto: false,
             });
             rep.added += 1;
         }

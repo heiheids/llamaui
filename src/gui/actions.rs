@@ -732,33 +732,53 @@ pub fn sync_mmproj(g: &mut Gui) {
         check_set(ctl.hwnd, want);
     }
 
-    // ---- 上下文自动填充 ----
-    if app.store.cfg.b("app.ctxAuto", true) && native > 0 {
-        let want = auto_ctx_for(native);
-        let cur = app.store.cfg.i("launch.ctxSize", 0);
-        if cur != want as i64 {
-            app.store.cfg.set_path("launch.ctxSize", Json::Num(want as f64));
-            let _ = app.store.save();
-            if want == native {
-                app.launcher.push_log(
-                    &format!("context size auto-set to {} (model max)", native),
-                    "",
-                );
-            } else {
-                app.launcher.push_log(
-                    &format!(
-                        "context size auto-set to {} (model max {} exceeds the {} cap)",
-                        want, native, AUTO_CTX_MAX
-                    ),
-                    "",
-                );
-            }
-        }
-        if let Some(ctl) = g.fields.iter().find(|c| c.key == "launch.ctxSize") {
-            set_text(ctl.hwnd, &want.to_string());
-        }
-        let _ = name;
+    // ---- 上下文：按模型记忆，没设过就用默认 64K ----
+    // 之前的做法是全局「跟随模型」，会把 1M 原生上下文的模型直接拉到 256K，
+    // 一启动就爆显存。现在改成每个模型各自记住自己的设置：
+    //   勾了「跟随模型」→ 用该模型原生上下文（仍有上限）
+    //   手动填过       → 记住这个值
+    //   都没做过       → 默认 64K
+    let (ctx_saved, ctx_auto) = app
+        .lib
+        .find(&g.selected_id)
+        .map(|m| (m.ctx_saved, m.ctx_auto))
+        .unwrap_or((0, false));
+    let want: i64 = if ctx_auto && native > 0 {
+        auto_ctx_for(native) as i64
+    } else if ctx_saved > 0 {
+        ctx_saved as i64
+    } else {
+        crate::settings::DEFAULT_CTX
+    };
+    let cur = app.store.cfg.i("launch.ctxSize", 0);
+    if cur != want {
+        app.store
+            .cfg
+            .set_path("launch.ctxSize", Json::Num(want as f64));
+        let _ = app.store.save();
+        app.launcher.push_log(
+            &format!(
+                "context for {}: {} ({})",
+                name,
+                want,
+                if ctx_auto {
+                    "following model max"
+                } else if ctx_saved > 0 {
+                    "remembered"
+                } else {
+                    "default"
+                }
+            ),
+            "",
+        );
     }
+    if let Some(ctl) = g.fields.iter().find(|c| c.key == "launch.ctxSize") {
+        set_text(ctl.hwnd, &want.to_string());
+    }
+    if let Some(ctl) = g.fields.iter().find(|c| c.key == "app.ctxAuto") {
+        check_set(ctl.hwnd, ctx_auto);
+    }
+    let _ = name;
 }
 
 /// 自动跟随模型时的上下文长度上限。
@@ -1044,6 +1064,16 @@ fn save_config(g: &mut Gui, hwnd: HWND) {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
                 app.store.cfg.set_path("app.ctxAuto", Json::Bool(auto));
+                // 把「这个模型用多少上下文」记到模型自己身上：
+                //   勾了跟随模型 → 不存具体值（每次按原生算）
+                //   没勾          → 记住界面上的数值
+                let ctx_now = app.store.cfg.i("launch.ctxSize", 0).max(0) as u32;
+                let id_now = app.store.selected_model();
+                if let Some(m) = app.lib.find_mut(&id_now) {
+                    m.ctx_auto = auto;
+                    m.ctx_saved = if auto { 0 } else { ctx_now };
+                }
+                let _ = app.lib.save();
                 match app.store.save() {
                     Ok(_) => {
                         app.launcher.push_log("settings saved", "");

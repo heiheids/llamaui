@@ -55,6 +55,11 @@ pub const ALL_LAYERS: u32 = 99;
 /// 而是把显存换页到内存，表现是速度骤降。告警阈值也用同一个数，保持口径一致。
 pub const VRAM_FIT_RATIO: f64 = 0.90;
 
+/// 实测校准后用来推荐上下文的档位（升序）
+const CTX_TIERS: [u32; 7] = [16384, 32768, 65536, 98304, 131072, 196608, 262144];
+/// 原生上下文未知时，档位最多试到这么多
+const AUTO_CTX_TIERS_MAX: u32 = 262144;
+
 /// 估算一次运行需要的显存
 ///
 /// * `file_bytes`：模型文件大小
@@ -364,6 +369,92 @@ pub fn profiles_cal(
             false,
             0,
         ));
+    }
+    // ⑦ 实测校准之后：按测得的每 token 开销，给出这台机器真正合适的几个上下文档位
+    if extra_mb_per_token > 0.0 && budget > 0.0 {
+        let native_cap = if info.ctx_native > 0 {
+            info.ctx_native
+        } else {
+            AUTO_CTX_TIERS_MAX
+        };
+        let mut best_fit: Option<u32> = None;
+        let mut first_over: Option<u32> = None;
+        for t in CTX_TIERS.iter().copied() {
+            if t > native_cap {
+                break;
+            }
+            let e = estimate_cal(
+                info,
+                file_bytes,
+                t,
+                ALL_LAYERS,
+                "q8_0",
+                "q8_0",
+                true,
+                extra_mb_per_token,
+            );
+            if e.total <= budget {
+                best_fit = Some(t);
+            } else if first_over.is_none() {
+                first_over = Some(t);
+            }
+        }
+        let mk = |tier: u32, title: String, note: String| -> Profile {
+            let est = estimate_cal(
+                info,
+                file_bytes,
+                tier,
+                ALL_LAYERS,
+                "q8_0",
+                "q8_0",
+                true,
+                extra_mb_per_token,
+            );
+            let fits = est.total <= budget;
+            Profile {
+                title,
+                note,
+                ctx: tier,
+                ngl: ALL_LAYERS,
+                kv_type: "q8_0".to_string(),
+                flash_attn: true,
+                n_cpu_moe: 0,
+                est,
+                fits,
+            }
+        };
+        let label = |c: u32| {
+            if c >= 1024 {
+                format!("{}K", c / 1024)
+            } else {
+                c.to_string()
+            }
+        };
+        if let Some(best) = best_fit {
+            out.push(mk(
+                best,
+                format!("档位 · {}（最大）", label(best)),
+                format!(
+                    "按实测每 token 开销算，{} 是这台机器能放下的最大上下文",
+                    label(best)
+                ),
+            ));
+            let safe = (best / 2).max(8192);
+            if safe != best {
+                out.push(mk(
+                    safe,
+                    format!("档位 · {}（留余量）", label(safe)),
+                    format!("{}，显存留有余量，长时间跑或再开别的程序更稳", label(safe)),
+                ));
+            }
+            if let Some(over) = first_over {
+                out.push(mk(
+                    over,
+                    format!("档位 · {}（放不下）", label(over)),
+                    format!("{} 超出可用显存，仅作对照", label(over)),
+                ));
+            }
+        }
     }
     out
 }
