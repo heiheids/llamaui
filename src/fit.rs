@@ -370,8 +370,9 @@ pub fn profiles_cal(
             0,
         ));
     }
-    // ⑦ 实测校准之后：按测得的每 token 开销，给出这台机器真正合适的几个上下文档位
-    if extra_mb_per_token > 0.0 && budget > 0.0 {
+    // ⑦ 上下文档位推荐：有实测就用实测开销，没有就先用结构公式估算
+    if budget > 0.0 {
+        let measured = extra_mb_per_token > 0.0;
         let native_cap = if info.ctx_native > 0 {
             info.ctx_native
         } else {
@@ -431,20 +432,30 @@ pub fn profiles_cal(
             }
         };
         if let Some(best) = best_fit {
+            let src = if measured {
+                "按实测每 token 开销算"
+            } else {
+                "按结构公式估算（启动一次该模型后会用实测校正）"
+            };
             out.push(mk(
                 best,
                 format!("档位 · {}（最大）", label(best)),
-                format!(
-                    "按实测每 token 开销算，{} 是这台机器能放下的最大上下文",
-                    label(best)
-                ),
+                format!("{}，{} 是这台机器能放下的最大上下文", src, label(best)),
             ));
             let safe = (best / 2).max(8192);
             if safe != best {
                 out.push(mk(
                     safe,
                     format!("档位 · {}（留余量）", label(safe)),
-                    format!("{}，显存留有余量，长时间跑或再开别的程序更稳", label(safe)),
+                    format!(
+                        "{}，显存留有余量，长时间跑或再开别的程序更稳{}",
+                        label(safe),
+                        if measured {
+                            ""
+                        } else {
+                            "（估算值）"
+                        }
+                    ),
                 ));
             }
             if let Some(over) = first_over {
