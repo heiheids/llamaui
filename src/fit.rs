@@ -201,11 +201,41 @@ pub fn profiles(
     cur_ctx: u32,
     vram_total_gb: f64,
 ) -> Vec<Profile> {
-    profiles_cal(info, file_bytes, cur_ctx, vram_total_gb, 0.0, false)
+    profiles_cal(info, file_bytes, cur_ctx, vram_total_gb, 0.0, false, None)
 }
 
 /// 带实测校准的版本：`extra_mb_per_token` = 公式之外每 token 的额外显存
 /// `calibrated` = 该模型是否真的启动过（false 时不给任何推荐）
+/// 估算入口：有实测直线（≥2 个点）就直接用它外推，否则退回公式 + 单点近似。
+/// 直线法绕开了所有结构假设，滑窗/自定义注意力的模型也能算准。
+fn est_with_line(
+    info: &GgufInfo,
+    file_bytes: u64,
+    ctx: u32,
+    ngl: u32,
+    kv: &str,
+    _fa: bool,
+    extra_mb_per_token: f64,
+    line: Option<(f64, f64)>,
+    n_cpu_moe: u32,
+) -> Estimate {
+    // 只有在与实测条件一致时才用直线：全量卸载 + q8_0 + 不把专家丢 CPU
+    if let Some((slope, intercept)) = line {
+        if ngl >= ALL_LAYERS && kv == "q8_0" && n_cpu_moe == 0 {
+            let total_gb = (intercept + slope * ctx as f64) / 1024.0;
+            return Estimate {
+                weights: intercept.max(0.0) / 1024.0,
+                kv: (slope * ctx as f64) / 1024.0,
+                compute: 0.0,
+                extra: 0.0,
+                total: total_gb.max(0.0),
+                on_cpu_layers: 0,
+            };
+        }
+    }
+    estimate_cal(info, file_bytes, ctx, ngl, kv, kv, _fa, extra_mb_per_token)
+}
+
 pub fn profiles_cal(
     info: &GgufInfo,
     file_bytes: u64,
@@ -213,6 +243,8 @@ pub fn profiles_cal(
     vram_total_gb: f64,
     extra_mb_per_token: f64,
     calibrated: bool,
+    // 实测直线 (每 token MB, 截距 MB)；有两点以上实测时优先用它
+    line: Option<(f64, f64)>,
 ) -> Vec<Profile> {
     let layers = if info.block_count > 0 {
         info.block_count
@@ -235,7 +267,7 @@ pub fn profiles_cal(
                 fa: bool,
                 n_cpu_moe: u32|
      -> Profile {
-        let est = estimate_cal(info, file_bytes, ctx, ngl, kv, kv, fa, extra_mb_per_token);
+        let est = est_with_line(info, file_bytes, ctx, ngl, kv, fa, extra_mb_per_token, line, n_cpu_moe);
         let fits = budget <= 0.0 || est.total <= budget;
         Profile {
             title: title.to_string(),
@@ -405,15 +437,16 @@ pub fn profiles_cal(
             if t > native_cap {
                 break;
             }
-            let e = estimate_cal(
+            let e = est_with_line(
                 info,
                 file_bytes,
                 t,
                 ALL_LAYERS,
                 "q8_0",
-                "q8_0",
                 true,
                 extra_mb_per_token,
+                line,
+                0,
             );
             if e.total <= budget {
                 best_fit = Some(t);
@@ -422,15 +455,16 @@ pub fn profiles_cal(
             }
         }
         let mk = |tier: u32, title: String, note: String| -> Profile {
-            let est = estimate_cal(
+            let est = est_with_line(
                 info,
                 file_bytes,
                 tier,
                 ALL_LAYERS,
                 "q8_0",
-                "q8_0",
                 true,
                 extra_mb_per_token,
+                line,
+                0,
             );
             let fits = est.total <= budget;
             Profile {

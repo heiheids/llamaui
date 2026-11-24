@@ -290,7 +290,8 @@ pub fn on_tick(g: &mut Gui) {
             app.launcher.push_log(
                 &format!(
                     "vram-calib: ctx={} 实测每 token 额外 {:.3} MB（公式未计入的部分）",
-                    c.sample_ctx, c.extra_mb_per_token
+                    c.points.last().map(|p| p.ctx).unwrap_or(0),
+                    c.extra_mb_per_token
                 ),
                 "",
             );
@@ -2108,16 +2109,26 @@ fn build_fit_profiles(g: &Gui) -> Vec<crate::fit::Profile> {
     } else {
         (i18n(g, "fit.notMeasured"), String::new())
     };
-    let profiles = crate::fit::profiles_cal(&info, size, ctx, vram_total, extra, calibrated);
+    let line = crate::vramcal::line(&g.selected_id);
+    let profiles =
+        crate::fit::profiles_cal(&info, size, ctx, vram_total, extra, calibrated, line);
     let line4 = match crate::vramcal::get(&g.selected_id) {
-        Some(c) if c.sample_ctx > 0 => {
-            let measured_gb = c.sample_mb as f64 / 1024.0;
-            let formula_gb = measured_gb - (c.extra_mb_per_token * c.sample_ctx as f64) / 1024.0;
-            // 128K 单独按 q8_0 全量卸载算，避免误取到别的上下文档位
-            let at128 =
-                crate::fit::estimate_cal(&info, size, 131072, 99, "q8_0", "q8_0", true, extra).total;
+        Some(c) if !c.points.is_empty() => {
+            let last = c.points.last().copied().unwrap();
+            let measured_gb = last.mb as f64 / 1024.0;
+            let formula_gb = measured_gb - (c.extra_mb_per_token * last.ctx as f64) / 1024.0;
+            // 128K：有实测直线就直接外推，没有就退回公式 + 单点近似
+            let at128 = match line {
+                Some((slope, intercept)) => (intercept + slope * 131072.0) / 1024.0,
+                None => crate::fit::estimate_cal(
+                    &info, size, 131072, 99, "q8_0", "q8_0", true, extra,
+                )
+                .total,
+            };
+            let pts = format!("{} 个实测点", c.points.len());
             i18n(g, "fit.calibrated")
-                .replace("{ctx}", &c.sample_ctx.to_string())
+                .replace("{pts}", &pts)
+                .replace("{ctx}", &last.ctx.to_string())
                 .replace("{measured}", &format!("{:.1}", measured_gb))
                 .replace("{gb128}", &format!("{:.1}", at128))
                 .replace("{formula}", &format!("{:.1}", formula_gb))
