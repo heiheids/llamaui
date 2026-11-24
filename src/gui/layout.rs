@@ -745,7 +745,10 @@ pub fn position_all(g: &mut Gui) {
         if ctl.kind == Kind::MultilineText {
             key_ctl = Some(ctl);
         } else if ctl.kind == Kind::Bool {
-            checks.push(ctl);
+            // 「自动适配显存」不进勾选行，单独放到 Flash Attention 右边那一格
+            if ctl.key != "launch.autoFit" {
+                checks.push(ctl);
+            }
         } else if section == "network" {
             net_plain.push(ctl);
         } else {
@@ -762,6 +765,18 @@ pub fn position_all(g: &mut Gui) {
         place_field(ctl, cx, cy, COL_W, k);
     }
     let rows = (plain.len() + 2) / 3;
+    // 「自动适配显存」：放到 Flash Attention 右边那一格
+    if let Some(fit) = g.fields.iter().find(|c| c.key == "launch.autoFit") {
+        if let Some(fi) = plain.iter().position(|c| c.key == "launch.flashAttn") {
+            let (row, col) = (fi / 3, fi % 3);
+            if col + 1 < 3 {
+                let cx = X0 + ((col + 1) as i32) * (COL_W + GAP);
+                let cy = y + (row as i32) * ROW_H;
+                move_to(fit.label, w(cx), h(cy), w(COL_W), h(20));
+                move_to(fit.hwnd, w(cx), h(cy + 22), w(COL_W), h(CTL_H));
+            }
+        }
+    }
     y += (rows as i32) * ROW_H;
 
     // 勾选项：横向一排，方框在文字左侧（单独占一行，不与上方控件重叠）

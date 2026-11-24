@@ -182,6 +182,9 @@ pub const FIELDS: &[Field] = &[
     num("launch.threads", "common", "field.threads", "hint.threads", 0.0, 512.0, 1.0, false),
     num("launch.parallel", "common", "field.parallel", "hint.parallel", 1.0, 64.0, 1.0, false),
     sel("launch.flashAttn", "common", "field.flashAttn", "hint.flashAttn", SELECT_YES_NO, false),
+    // b126xx 起的 --fit：把「层数 / 上下文」交给 llama.cpp 按可用显存自己算，
+    // 比我们按 GGUF 元数据估算准（它会实际算 KV、计算缓冲、每层开销）
+    f("launch.autoFit", Kind::Bool, "common", "field.autoFit", "hint.autoFit", false),
     f("launch.jinja", Kind::Bool, "common", "field.jinja", "hint.jinja", false),
     f("launch.mtp", Kind::Bool, "common", "field.mtp", "hint.mtp", false),
     // ---------- 常用：网络 / API ----------
@@ -201,6 +204,10 @@ pub const FIELDS: &[Field] = &[
     num("launch.fitMinCtx", "advanced", "field.fitMinCtx", "hint.fitMinCtx", 2048.0, 1048576.0, 1024.0, true),
     // 专家权重留在内存时，可以把最近用到的专家缓存到显存（MoE 模型提速）
     num("gpu.moeCacheMiB", "advanced", "field.moeCacheMiB", "hint.moeCacheMiB", 0.0, 65536.0, 512.0, true),
+    // 提示词缓存：同一段前缀再次提问时直接复用，省掉重复预填充
+    num("adv.ctxCheckpoints", "advanced", "field.ctxCheckpoints", "hint.ctxCheckpoints", 0.0, 512.0, 1.0, true),
+    num("adv.cacheRam", "advanced", "field.cacheRam", "hint.cacheRam", -1.0, 262144.0, 1024.0, true),
+    num("adv.cacheReuse", "advanced", "field.cacheReuse", "hint.cacheReuse", 0.0, 65536.0, 64.0, true),
     sel("gpu.splitMode", "advanced", "field.splitMode", "hint.splitMode", SELECT_SPLIT, true),
     f("gpu.tensorSplit", Kind::Text, "advanced", "field.tensorSplit", "hint.tensorSplit", true),
     num("gpu.mainGpu", "advanced", "field.mainGpu", "hint.mainGpu", 0.0, 64.0, 1.0, true),
@@ -269,10 +276,13 @@ pub fn defaults() -> Json {
     c.set_path("launch.batchSize", Json::Num(2048.0));
     c.set_path("launch.ubatchSize", Json::Num(512.0));
     c.set_path("launch.loadMode", Json::str("auto"));
-    c.set_path("launch.autoFit", Json::Bool(false));
+    c.set_path("launch.autoFit", Json::Bool(true));
     c.set_path("launch.fitTarget", Json::Num(1024.0));
     c.set_path("launch.fitMinCtx", Json::Num(4096.0));
     c.set_path("gpu.moeCacheMiB", Json::Num(0.0));
+    c.set_path("adv.ctxCheckpoints", Json::Num(32.0));
+    c.set_path("adv.cacheRam", Json::Num(8192.0));
+    c.set_path("adv.cacheReuse", Json::Num(0.0));
     c.set_path("launch.embeddings", Json::Bool(false));
     c.set_path("launch.noWarmup", Json::Bool(false));
     c.set_path("app.autoTranslate", Json::Bool(false));
@@ -760,6 +770,24 @@ pub fn build_args(cfg: &Json, model_path: &str) -> Vec<String> {
 
     push_num(&mut a, "-b", cfg, "launch.batchSize", 2048.0);
     push_num(&mut a, "-ub", cfg, "launch.ubatchSize", 512.0);
+    // ---- 提示词缓存 ----
+    // 同一段前缀（系统提示、长文档、多轮对话）再次提问时直接复用 KV，
+    // 省掉重复的预填充；检查点用来在长上下文里回退到最近的快照
+    let ctxcp = cfg.i("adv.ctxCheckpoints", 32);
+    if ctxcp != 32 && ctxcp >= 0 {
+        a.push("-ctxcp".into());
+        a.push(ctxcp.to_string());
+    }
+    let cram = cfg.i("adv.cacheRam", 8192);
+    if cram >= -1 && cram != 8192 {
+        a.push("-cram".into());
+        a.push(cram.to_string());
+    }
+    let reuse = cfg.i("adv.cacheReuse", 0);
+    if reuse > 0 {
+        a.push("--cache-reuse".into());
+        a.push(reuse.to_string());
+    }
     let moe_cache = cfg.i("gpu.moeCacheMiB", 0);
     if moe_cache > 0 {
         a.push("--moe-cache-mib".into());

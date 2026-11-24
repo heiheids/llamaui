@@ -194,11 +194,23 @@ pub fn parse_help(text: &str) -> HelpDoc {
         }
 
         // 新条目：在左侧 flag 列里找 2 个以上空格的断点
-        let Some(split) = find_split(trimmed) else {
-            continue;
+        // 有些条目把说明写在下一行（flag 行只有单个空格分隔），
+        // 这种情况 find_split 找不到断点；直接整行当参数名，否则会漏掉这类参数
+        let (left, right) = match find_split(trimmed) {
+            Some(split) => (
+                trimmed[..split].trim().to_string(),
+                trimmed[split..].trim().to_string(),
+            ),
+            None => {
+                let l = trimmed.trim();
+                if !l.starts_with('-') {
+                    continue;
+                }
+                (l.to_string(), String::new())
+            }
         };
-        let left = trimmed[..split].trim();
-        let right = trimmed[split..].trim();
+        let left = left.as_str();
+        let right = right.as_str();
         if !left.starts_with('-') {
             continue;
         }
@@ -576,6 +588,11 @@ pub fn filter_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
                     let was_known = known.iter().any(|k| k == &name);
                     if was_known {
                         warnings.push(format!("{} 在当前 llama-server 中已不存在，已忽略", name));
+                        // 值也要一起丢掉，否则会变成游离在命令行里的位置参数，
+                        // 让 llama-server 直接启动失败（-fitt 就踩过这个坑）
+                        if has_value {
+                            i += 1;
+                        }
                     } else {
                         warnings.push(format!("{} 不在当前 llama-server 参数表中", name));
                         out.push(tok);
