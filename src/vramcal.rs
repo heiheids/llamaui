@@ -350,10 +350,19 @@ pub fn tick(running: bool) -> Option<(String, Calib)> {
     };
 
     let used_whole = sample.last_mb;
-    // 显存已经贴到上限，说明这次摆不下、驱动在偷偷换页，量到的数字不能用
+    // 显存贴死到上限才算「摆不下、驱动在换页」，那样量到的数字不能用。
+    // 阈值不能定太低：22 GB 卡跑 21.2 GB 是 94%，这时模型跑得好好的，
+    // 一刀切到 92% 会让这种正常配置永远校准不上。
     if let Some(total) = crate::monitor::gpu_mem_total_mb() {
-        if total > 0 && (used_whole as f64) / (total as f64) >= 0.92 {
-            return None;
+        if total > 0 {
+            let ratio = used_whole as f64 / total as f64;
+            if ratio >= 0.985 {
+                note_skip(&format!(
+                    "显存已占满（{:.0}%），判定为换页状态，本次不记录校准",
+                    ratio * 100.0
+                ));
+                return None;
+            }
         }
     }
 
@@ -397,4 +406,26 @@ pub fn tick(running: bool) -> Option<(String, Calib)> {
     );
     let c = get(&sample.model_id)?;
     Some((sample.model_id.clone(), c))
+}
+/// 最近一次被跳过的原因，界面取走后清空（用来说明「为什么没校准上」）
+static SKIP_REASON: std::sync::OnceLock<Mutex<Option<String>>> = std::sync::OnceLock::new();
+
+fn note_skip(msg: &str) {
+    if let Some(c) = SKIP_REASON.get() {
+        if let Ok(mut g) = c.lock() {
+            *g = Some(msg.to_string());
+        }
+    } else {
+        let c = SKIP_REASON.get_or_init(|| Mutex::new(None));
+        if let Ok(mut g) = c.lock() {
+            *g = Some(msg.to_string());
+        }
+    }
+}
+
+/// 取出并清空「上次为什么没校准」的说明
+pub fn take_skip_reason() -> Option<String> {
+    let c = SKIP_REASON.get_or_init(|| Mutex::new(None));
+    let mut g = c.lock().ok()?;
+    g.take()
 }

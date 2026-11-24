@@ -284,6 +284,12 @@ pub fn on_tick(g: &mut Gui) {
         Ok(app) => app.launcher.status_json(&app.store.cfg).s("phase", "") == "running",
         Err(_) => false,
     };
+    // 采样被跳过时说明原因，避免用户看到「未实测」却不知道为什么
+    if let Some(why) = crate::vramcal::take_skip_reason() {
+        if let Ok(app) = g.shared.lock() {
+            app.launcher.push_log(&format!("vram-calib: {}", why), "");
+        }
+    }
     // 服务跑起来后量一次真实显存，校准「显存估算」的公式误差
     if let Some((_, c)) = crate::vramcal::tick(running) {
         if let Ok(app) = g.shared.lock() {
