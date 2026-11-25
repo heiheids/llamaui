@@ -327,6 +327,12 @@ pub fn on_tick(g: &mut Gui) {
         Ok(app) => app.launcher.status_json(&app.store.cfg).s("phase", "") == "running",
         Err(_) => false,
     };
+    // 面板线程排队的日志（聊天代理出错等），在这里补进运行日志
+    for msg in crate::web::take_panel_logs() {
+        if let Ok(app) = g.shared.lock() {
+            app.launcher.push_log(&msg, "");
+        }
+    }
     // 采样被跳过时说明原因，避免用户看到「未实测」却不知道为什么
     if let Some(why) = crate::vramcal::take_skip_reason() {
         if let Ok(app) = g.shared.lock() {

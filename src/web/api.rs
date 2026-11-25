@@ -53,6 +53,33 @@ pub fn handle(shared: &Shared, req: &Request) -> Response {
     let path = if path.is_empty() { "/".to_string() } else { path };
     let method = req.method.as_str();
 
+    // 聊天要等整段生成完成（几十秒），绝不能握着全局锁做：
+    // 界面每个 tick 都要拿这把锁，握久了立刻变成「未响应」。
+    // 先把需要的信息抄出来，放锁，再去请求。
+    if method == "POST" && path == "/api/chat" {
+        let ctx = ChatCtx {
+            model_name: {
+                let alias = app.store.cfg.s("launch.alias", "");
+                if !alias.is_empty() {
+                    alias
+                } else {
+                    app.lib
+                        .find(&app.store.selected_model())
+                        .map(|m| m.path.clone())
+                        .unwrap_or_default()
+                }
+            },
+            port: app.store.cfg.i("network.port", 9931) as u16,
+            key: if app.store.cfg.b("network.apiKeyEnabled", true) {
+                settings::api_keys(&app.store.cfg).first().cloned()
+            } else {
+                None
+            },
+        };
+        drop(app);
+        return proxy_chat(&ctx, req, &lang);
+    }
+
     match (method, path.as_str()) {
         ("GET", "/api/bootstrap") => bootstrap(&mut app, &lang),
         ("GET", "/api/status") => {
@@ -82,7 +109,7 @@ pub fn handle(shared: &Shared, req: &Request) -> Response {
             app.launcher.push_log("server stopped by panel", "");
             ok(Json::Bool(true))
         }
-        ("POST", "/api/chat") => proxy_chat(&app, req, &lang),
+
         ("GET", "/api/log") => {
             let since = req
                 .query
@@ -345,21 +372,21 @@ fn start_server(app: &mut App, req: &Request, lang: &str) -> Response {
 }
 
 /// 代理聊天请求到 llama-server，避免浏览器跨域问题
-fn proxy_chat(app: &App, req: &Request, lang: &str) -> Response {
+/// 聊天代理需要的全部信息（从全局状态里抄出来，避免持锁做网络请求）
+struct ChatCtx {
+    model_name: String,
+    port: u16,
+    key: Option<String>,
+}
+
+fn proxy_chat(ctx: &ChatCtx, req: &Request, lang: &str) -> Response {
     let body = req.body_text();
     let parsed = match json::parse(&body) {
         Ok(v) => v,
         Err(_) => return err_localized("err.badPayload", lang),
     };
     let mut payload = Json::obj();
-    let model = app.store.selected_model();
-    let alias = app.store.cfg.s("launch.alias", "");
-    let model_name = if !alias.is_empty() {
-        alias
-    } else {
-        app.lib.find(&model).map(|m| m.path.clone()).unwrap_or_default()
-    };
-    payload.set("model", Json::str(model_name));
+    payload.set("model", Json::str(ctx.model_name.clone()));
     payload.set(
         "messages",
         parsed.get("messages").cloned().unwrap_or(Json::Arr(vec![])),
@@ -371,20 +398,12 @@ fn proxy_chat(app: &App, req: &Request, lang: &str) -> Response {
         }
     }
 
-    let port = app.store.cfg.i("network.port", 9931) as u16;
-    let keys = settings::api_keys(&app.store.cfg);
-    let key = if app.store.cfg.b("network.apiKeyEnabled", true) {
-        keys.first().cloned()
-    } else {
-        None
-    };
-
     match client::request(
         "127.0.0.1",
-        port,
+        ctx.port,
         "POST",
         "/v1/chat/completions",
-        key.as_deref(),
+        ctx.key.as_deref(),
         Some(&payload.to_compact()),
     ) {
         Ok(resp) => {
@@ -403,7 +422,8 @@ fn proxy_chat(app: &App, req: &Request, lang: &str) -> Response {
             ok(parsed_resp)
         }
         Err(e) => {
-            app.launcher.push_log(&format!("chat proxy error: {}", e), "");
+            // 这里没有全局锁，日志只能晚点补：直接进内存队列由界面线程取走
+            crate::web::queue_panel_log(&format!("chat proxy error: {}", e));
             let mut o = Json::obj();
             o.set("ok", Json::Bool(false));
             o.set("code", Json::str("err.network"));

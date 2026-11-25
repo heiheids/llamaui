@@ -88,3 +88,23 @@ fn serve_static(req: &http::Request) -> http::Response {
         }
     }
 }
+/// 面板线程在没有全局锁时产生的日志，先在这里排队，由界面线程取走
+static PANEL_LOG: std::sync::OnceLock<std::sync::Mutex<Vec<String>>> = std::sync::OnceLock::new();
+
+pub fn queue_panel_log(msg: &str) {
+    let q = PANEL_LOG.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+    if let Ok(mut v) = q.lock() {
+        if v.len() < 200 {
+            v.push(msg.to_string());
+        }
+    }
+}
+
+/// 界面线程调用：取走并清空排队的日志
+pub fn take_panel_logs() -> Vec<String> {
+    let q = PANEL_LOG.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+    match q.lock() {
+        Ok(mut v) => std::mem::take(&mut *v),
+        Err(_) => Vec::new(),
+    }
+}
