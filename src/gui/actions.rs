@@ -785,6 +785,27 @@ pub fn sync_mmproj(g: &mut Gui) {
     if let Some(ctl) = g.fields.iter().find(|c| c.key == "app.ctxAuto") {
         check_set(ctl.hwnd, ctx_auto);
     }
+    // 跟随模型与自动适配互斥：跟随模型要的是显式上下文，自动适配会忽略它。
+    // 不同步的话，勾了「跟随模型」启动仍然是 fit 决定的值，等于没生效。
+    if ctx_auto && app.store.cfg.b("launch.autoFit", false) {
+        app.store
+            .cfg
+            .set_path("launch.autoFit", Json::Bool(false));
+        let _ = app.store.save();
+        app.launcher.push_log(
+            "auto-fit disabled because the context follows the model",
+            "",
+        );
+    }
+    if let Some(ctl) = g.fields.iter().find(|c| c.key == "launch.autoFit") {
+        check_set(ctl.hwnd, app.store.cfg.b("launch.autoFit", false));
+    }
+    // 全局键跟着当前模型走。这里无条件写：条件写会被随后的保存覆盖，
+    // 导致切到「未勾选」的模型后配置文件里还留着 true。
+    app.store
+        .cfg
+        .set_path("app.ctxAuto", Json::Bool(ctx_auto));
+    let _ = app.store.save();
     let _ = name;
 }
 
@@ -1044,6 +1065,10 @@ fn save_config(g: &mut Gui, hwnd: HWND) {
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     if auto {
+        // --fit 会自己决定上下文，把显式 -c 直接吞掉。
+        // 用户勾了「跟随模型」就是要用原生上限，所以必须把自动适配关掉，
+        // 否则勾选等于没勾（之前的 bug：勾了也不生效）。
+        patch.set_path("launch.autoFit", crate::json::Json::Bool(false));
         if let Ok(app) = g.shared.lock() {
             let native = app
                 .lib

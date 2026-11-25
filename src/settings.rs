@@ -263,7 +263,7 @@ pub fn defaults() -> Json {
     c.set_path("app.scanDirs", Json::Arr(vec![]));
     c.set_path("app.selectedModel", Json::str(""));
     // 上下文长度默认自动跟随模型上限；用户手动改并保存后置为 false
-    c.set_path("app.ctxAuto", Json::Bool(true));
+    c.set_path("app.ctxAuto", Json::Bool(false));
     c.set_path("launch.alias", Json::str(""));
     c.set_path("launch.vision", Json::Bool(true));
     c.set_path("launch.mmproj", Json::str(""));

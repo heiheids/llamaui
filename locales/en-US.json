@@ -121,7 +121,7 @@
   "field": {
     "alias": "Model alias",
     "ctxSize": "Context size (tokens)",
-    "ctxAuto": "Context follows model",
+    "ctxAuto": "When checked, the context follows the selected model's native maximum (capped at 262144) and is rewritten on model switch; this turns off Auto-fit VRAM, since the fitter ignores an explicit context",
     "nGpuLayers": "GPU layers",
     "threads": "CPU threads",
     "parallel": "Parallel slots",
@@ -181,7 +181,7 @@
   "hint": {
     "alias": "Model name used by the API; empty means the file path",
     "ctxSize": "0 = derived from model metadata; larger uses more VRAM",
-    "ctxAuto": "When checked, switching models resets the context to that model's native maximum",
+    "ctxAuto": "When checked, the context follows the selected model's native maximum (capped at 262144) and is rewritten on model switch; this turns off Auto-fit VRAM, since the fitter ignores an explicit context",
     "nGpuLayers": "99 means offload as many layers as possible",
     "threads": "0 = auto",
     "parallel": "Concurrent requests; raise for parallel agents",
