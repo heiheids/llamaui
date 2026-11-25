@@ -248,6 +248,49 @@ pub fn on_command(g: &mut Gui, hwnd: HWND, id: usize, code: u32) {
                     );
                     if let Ok(mut app) = g.shared.lock() {
                         app.store.cfg.set_path(FIELDS[idx].key, Json::Bool(on));
+                        // 「上下文跟随模型」勾上/取消时立刻改上下文并落盘：
+                        // 只改勾选状态的话，用户看到数字没变会以为没生效，
+                        // 而且不点保存直接启动还会被 --fit 覆盖掉。
+                        if FIELDS[idx].key == "app.ctxAuto" {
+                            let id_now = app.store.selected_model();
+                            let (native, saved) = app
+                                .lib
+                                .find(&id_now)
+                                .map(|m| (m.ctx_native, m.ctx_saved))
+                                .unwrap_or((0, 0));
+                            let want: i64 = if on && native > 0 {
+                                auto_ctx_for(native) as i64
+                            } else if saved > 0 {
+                                saved as i64
+                            } else {
+                                crate::settings::DEFAULT_CTX
+                            };
+                            app.store
+                                .cfg
+                                .set_path("launch.ctxSize", Json::Num(want as f64));
+                            // 跟随模型与自动适配互斥，勾上时把 fit 关掉
+                            if on {
+                                app.store
+                                    .cfg
+                                    .set_path("launch.autoFit", Json::Bool(false));
+                            }
+                            if let Some(m) = app.lib.find_mut(&id_now) {
+                                m.ctx_auto = on;
+                                m.ctx_saved = if on { 0 } else { want as u32 };
+                            }
+                            let _ = app.lib.save();
+                            let _ = app.store.save();
+                            if let Some(c) =
+                                g.fields.iter().find(|c| c.key == "launch.ctxSize")
+                            {
+                                set_text(c.hwnd, &want.to_string());
+                            }
+                            if let Some(c) =
+                                g.fields.iter().find(|c| c.key == "launch.autoFit")
+                            {
+                                check_set(c.hwnd, app.store.cfg.b("launch.autoFit", false));
+                            }
+                        }
                     }
                     layout::refresh_args_preview(g);
                     show_ctx_hint(g);
