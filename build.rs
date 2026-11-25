@@ -10,6 +10,9 @@ fn main() {
     println!("cargo:rerun-if-changed=assets");
     println!("cargo:rerun-if-changed=locales");
     println!("cargo:rerun-if-changed=Cargo.toml");
+    // 只改 Cargo.toml 的版本号时，cargo 不一定重跑本脚本，
+    // 会导致 exe 里的版本资源还停在旧值。显式依赖版本环境变量。
+    println!("cargo:rerun-if-env-changed=CARGO_PKG_VERSION");
 
     embed_icon(&version);
 }
