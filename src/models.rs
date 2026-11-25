@@ -89,6 +89,7 @@ impl Library {
             }
         }
         // 补齐缺失字段 / 过滤已删除文件（相对路径按工程根解析后再判断）
+        let mut dirty = false;
         items.retain(|m| Path::new(&util::absolutize(&m.path)).is_file());
         for m in items.iter_mut() {
             if m.id.is_empty() {
@@ -97,11 +98,30 @@ impl Library {
             if m.name.is_empty() {
                 m.name = file_stem(&m.path);
             }
-            m.size = fs::metadata(util::absolutize(&m.path))
-                .map(|md| md.len())
-                .unwrap_or(m.size);
+            let abs = util::absolutize(&m.path);
+            let new_size = fs::metadata(&abs).map(|md| md.len()).unwrap_or(m.size);
+            // 同名文件被替换过（尺寸变了）时，原生上下文 / 是否 MoE 可能已经不同。
+            // 只在尺寸变化时重读，避免每次启动都解析一遍 GGUF 头。
+            if new_size != m.size && new_size > 0 {
+                if let Some(info) = crate::gguf::read(&abs) {
+                    if info.ctx_native > 0 {
+                        m.ctx_native = info.ctx_native;
+                    }
+                    m.moe = info.is_moe();
+                    dirty = true;
+                }
+            }
+            if new_size != m.size {
+                dirty = true;
+            }
+            m.size = new_size;
         }
-        Library { items, path }
+        let lib = Library { items, path };
+        // 纠正过就立刻落盘，避免下次启动又算一遍
+        if dirty {
+            let _ = lib.save();
+        }
+        lib
     }
 
     pub fn save(&self) -> std::io::Result<()> {
